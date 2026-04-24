@@ -367,7 +367,7 @@ function Sidebar({ active, setActive }) {
   const handleExport = () => {
     try {
       const data = {
-        version: 'v20260425.08',
+        version: 'v20260425.09',
         exportedAt: new Date().toISOString(),
         products: storage.get('el_products', []),
         types: storage.get('el_types', DEFAULT_TYPES),
@@ -485,7 +485,7 @@ function Sidebar({ active, setActive }) {
       </nav>
 
       <div className="px-6 py-3 border-t border-gray-100">
-        <div className="version-badge">v20260425.08</div>
+        <div className="version-badge">v20260425.09</div>
       </div>
     </aside>
     {showCompanyModal && <CompanyInfoModal onClose={() => setShowCompanyModal(false)} />}
@@ -672,15 +672,60 @@ function QuickOrderModal({ product, types, onClose, onSaveOrder }) {
     return t;
   }, [quantities, colors, sizes]);
 
-  // 자동 계산
-  const fabricNeeded = (product.fabric?.yoChuk || 0) * totalQty;
+  // 자동 계산 (사이즈별 사용량 기반)
+  const sizeQtyMap = useMemo(() => {
+    // 사이즈별 총 수량
+    const m = {};
+    sizes.forEach(sz => {
+      m[sz] = colors.reduce((s, c) => s + (quantities[`${c}_${sz}`] || 0), 0);
+    });
+    return m;
+  }, [quantities, sizes, colors]);
+
+  const missingUsage = useMemo(() => {
+    // 수량이 들어간 사이즈 중 사용량이 없는 것 체크
+    const missing = [];
+    sizes.forEach(sz => {
+      if (sizeQtyMap[sz] > 0) {
+        const fabricUse = product.sizeUsage?.fabric?.[sz];
+        if (product.fabric?.vendorName && (fabricUse === undefined || fabricUse === 0)) {
+          missing.push(`${sz} 원단 사용량`);
+        }
+        (product.materials || []).forEach((mat, idx) => {
+          const use = product.sizeUsage?.materials?.[`m_${idx}`]?.[sz];
+          if (mat.vendorName && (use === undefined || use === 0)) {
+            missing.push(`${sz} ${mat.name || '부자재#' + (idx+1)} 사용량`);
+          }
+        });
+      }
+    });
+    return missing;
+  }, [sizeQtyMap, sizes, product]);
+
+  const fabricNeeded = useMemo(() => {
+    return sizes.reduce((s, sz) => {
+      const qty = sizeQtyMap[sz] || 0;
+      const use = product.sizeUsage?.fabric?.[sz] || 0;
+      return s + (qty * use);
+    }, 0);
+  }, [sizeQtyMap, sizes, product]);
+
   const fabricCost = fabricNeeded * (product.fabric?.price || 0);
   
-  const materialsNeeded = (product.materials || []).map(m => ({
-    ...m,
-    totalQty: (m.qty || 0) * totalQty,
-    totalCost: (m.qty || 0) * totalQty * (m.price || 0),
-  }));
+  const materialsNeeded = useMemo(() => {
+    return (product.materials || []).map((m, idx) => {
+      const totalQty = sizes.reduce((s, sz) => {
+        const qty = sizeQtyMap[sz] || 0;
+        const use = product.sizeUsage?.materials?.[`m_${idx}`]?.[sz] || 0;
+        return s + (qty * use);
+      }, 0);
+      return {
+        ...m,
+        totalQty,
+        totalCost: totalQty * (m.price || 0),
+      };
+    });
+  }, [sizeQtyMap, sizes, product]);
 
   const sewingCost = (product.sewing?.price || 0) * totalQty;
   const totalCost = fabricCost + materialsNeeded.reduce((s, m) => s + m.totalCost, 0) + sewingCost;
@@ -942,6 +987,23 @@ ${itemDesc}
           {totalQty > 0 && (
             <div className="bg-gray-50 rounded-xl p-4 mb-4">
               <div className="text-xs font-semibold text-gray-700 mb-2">📦 필요 자재 자동 계산</div>
+              
+              {missingUsage.length > 0 && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-2 mb-3 text-xs">
+                  <div className="font-semibold text-orange-800 mb-1">⚠️ 사용량 미입력 항목</div>
+                  <div className="text-orange-700 text-[11px] space-y-0.5">
+                    {missingUsage.slice(0, 5).map((m, i) => (
+                      <div key={i}>• {m}</div>
+                    ))}
+                    {missingUsage.length > 5 && <div>• ... 외 {missingUsage.length - 5}개</div>}
+                  </div>
+                  <div className="text-[10px] text-orange-600 mt-1 pt-1 border-t border-orange-200">
+                    상품마스터에서 사이즈별 사용량을 입력하면 정확히 계산됩니다.
+                    <br />현재는 입력된 값만으로 계산 중 (0으로 누락됨)
+                  </div>
+                </div>
+              )}
+              
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between">
                   <span>🧵 원단 ({product.fabric?.name || '-'})</span>
@@ -1068,38 +1130,167 @@ ${itemDesc}
 // 상품 폼
 // ═══════════════════════════════════════════════════════════
 function ProductForm({ product, types, vendors, materialKinds, onSave, onCancel }) {
-  const [form, setForm] = useState(() => product ? JSON.parse(JSON.stringify(product)) : {
-    name: '', typeId: null, typeSelections: {}, image: '',
-    sizes: [],
-    fabric: {
-      vendorName: '', vendorPhone: '', vendorAddr: '', vendorBizNo: '',
-      name: '', colors: [], unit: 'yds', price: 0, yoChuk: 0
-    },
-    materials: [], // { vendorName, vendorPhone, vendorAddr, vendorBizNo, name, kind, unit, price, qty }
-    sewing: {
-      vendorName: '', vendorPhone: '', vendorAddr: '', vendorBizNo: '', price: 0
-    },
-    processing: {
-      dyeing: { use: false, vendorName: '', vendorPhone: '', vendorAddr: '', vendorBizNo: '', price: 0 },
-      tenter: { use: false, vendorName: '', vendorPhone: '', vendorAddr: '', vendorBizNo: '', price: 0 },
-      transfer: { use: false, vendorName: '', vendorPhone: '', vendorAddr: '', vendorBizNo: '', price: 0 },
-      printing: { use: false, vendorName: '', vendorPhone: '', vendorAddr: '', vendorBizNo: '', price: 0 },
-    },
-    elColors: {}, // { '거래처컬러명': '이엘컬러명' }
+  const [form, setForm] = useState(() => {
+    if (product) {
+      const p = JSON.parse(JSON.stringify(product));
+      // 마이그레이션: yoChuk → sizeUsage
+      if (!p.sizeUsage) p.sizeUsage = {};
+      // 원단 요척을 각 사이즈에 복사
+      if (p.fabric?.yoChuk > 0 && p.sizes?.length > 0) {
+        if (!p.sizeUsage.fabric) p.sizeUsage.fabric = {};
+        p.sizes.forEach(sz => {
+          if (p.sizeUsage.fabric[sz] === undefined) {
+            p.sizeUsage.fabric[sz] = p.fabric.yoChuk;
+          }
+        });
+      }
+      // 부자재 qty → 각 사이즈에 복사
+      if (!p.sizeUsage.materials) p.sizeUsage.materials = {};
+      (p.materials || []).forEach((m, idx) => {
+        if (m.qty > 0 && p.sizes?.length > 0) {
+          const mKey = `m_${idx}`;
+          if (!p.sizeUsage.materials[mKey]) p.sizeUsage.materials[mKey] = {};
+          p.sizes.forEach(sz => {
+            if (p.sizeUsage.materials[mKey][sz] === undefined) {
+              p.sizeUsage.materials[mKey][sz] = m.qty;
+            }
+          });
+        }
+      });
+      return p;
+    }
+    return {
+      name: '', typeId: null, typeSelections: {}, image: '',
+      sizes: [],
+      fabric: {
+        vendorName: '', vendorPhone: '', vendorAddr: '', vendorBizNo: '',
+        name: '', colors: [], unit: 'yds', price: 0
+      },
+      materials: [],
+      sewing: {
+        vendorName: '', vendorPhone: '', vendorAddr: '', vendorBizNo: '', price: 0
+      },
+      processing: {
+        dyeing: { use: false, vendorName: '', vendorPhone: '', vendorAddr: '', vendorBizNo: '', price: 0 },
+        tenter: { use: false, vendorName: '', vendorPhone: '', vendorAddr: '', vendorBizNo: '', price: 0 },
+        transfer: { use: false, vendorName: '', vendorPhone: '', vendorAddr: '', vendorBizNo: '', price: 0 },
+        printing: { use: false, vendorName: '', vendorPhone: '', vendorAddr: '', vendorBizNo: '', price: 0 },
+      },
+      elColors: {},
+      sizeUsage: {
+        fabric: {},     // { S: 0.30, M: 0.35, L: 0.40 }
+        materials: {},  // { m_0: { S: 1, M: 1, L: 1 }, m_1: { ... } }
+      },
+    };
   });
 
   const selectedType = types[form.typeId];
   const SIZE_OPTIONS = ['S', 'M', 'L', '55', '66', '77', 'FREE'];
 
-  // 원가 계산
-  const totalCost = useMemo(() => {
-    let c = 0;
-    if (form.fabric) c += (form.fabric.yoChuk || 0) * (form.fabric.price || 0);
-    if (form.sewing) c += form.sewing.price || 0;
-    (form.materials || []).forEach(m => c += (m.qty || 0) * (m.price || 0));
-    Object.values(form.processing || {}).forEach(p => { if (p.use) c += p.price || 0; });
-    return Math.round(c);
+  // 사이즈별 사용량 헬퍼
+  const setFabricUsage = (size, value) => {
+    setForm(prev => ({
+      ...prev,
+      sizeUsage: {
+        ...prev.sizeUsage,
+        fabric: { ...(prev.sizeUsage?.fabric || {}), [size]: parseFloat(value) || 0 }
+      }
+    }));
+  };
+
+  const setMaterialUsage = (materialIdx, size, value) => {
+    const mKey = `m_${materialIdx}`;
+    setForm(prev => ({
+      ...prev,
+      sizeUsage: {
+        ...prev.sizeUsage,
+        materials: {
+          ...(prev.sizeUsage?.materials || {}),
+          [mKey]: {
+            ...((prev.sizeUsage?.materials || {})[mKey] || {}),
+            [size]: parseFloat(value) || 0
+          }
+        }
+      }
+    }));
+  };
+
+  // 사이즈별 원가 계산
+  const sizeCosts = useMemo(() => {
+    const result = {};
+    if (!form.sizes || form.sizes.length === 0) return result;
+    
+    form.sizes.forEach(sz => {
+      const fabricUse = form.sizeUsage?.fabric?.[sz];
+      const fabricPrice = form.fabric?.price || 0;
+      
+      let fabricCost = null;
+      let materialsCost = null;
+      const missing = [];
+      
+      if (fabricUse !== undefined && fabricUse > 0 && fabricPrice > 0) {
+        fabricCost = fabricUse * fabricPrice;
+      } else if (form.fabric?.vendorName && fabricPrice > 0) {
+        missing.push('원단사용량');
+      }
+      
+      // 부자재 비용
+      if ((form.materials || []).length > 0) {
+        materialsCost = 0;
+        (form.materials || []).forEach((m, idx) => {
+          const use = form.sizeUsage?.materials?.[`m_${idx}`]?.[sz];
+          if (use !== undefined && use > 0 && m.price > 0) {
+            materialsCost += use * m.price;
+          } else if (m.vendorName && m.price > 0) {
+            missing.push(`${m.name || '부자재#' + (idx+1)}사용량`);
+          }
+        });
+      }
+      
+      // 봉제 공임
+      const sewingCost = form.sewing?.price || 0;
+      
+      // 가공 (사이즈 무관 고정)
+      let procCost = 0;
+      Object.values(form.processing || {}).forEach(p => {
+        if (p.use) procCost += p.price || 0;
+      });
+      
+      const total = (fabricCost !== null ? fabricCost : 0) 
+                  + (materialsCost !== null ? materialsCost : 0) 
+                  + sewingCost + procCost;
+      
+      result[sz] = {
+        fabric: fabricCost,
+        materials: materialsCost,
+        sewing: sewingCost,
+        processing: procCost,
+        total: missing.length === 0 ? total : null,
+        missing,
+      };
+    });
+    return result;
   }, [form]);
+
+  // 원가 표시 상태 결정
+  const costStatus = useMemo(() => {
+    if (!form.sizes || form.sizes.length === 0) {
+      return { kind: 'noSize' };
+    }
+    const hasFabricVendor = form.fabric?.vendorName;
+    const hasFabricPrice = form.fabric?.price > 0;
+    if (!hasFabricVendor || !hasFabricPrice) {
+      return { kind: 'noFabricInfo' };
+    }
+    
+    const allComplete = form.sizes.every(sz => sizeCosts[sz]?.total !== null);
+    if (allComplete) return { kind: 'complete' };
+    
+    const someComplete = form.sizes.some(sz => sizeCosts[sz]?.total !== null);
+    if (someComplete) return { kind: 'partial' };
+    
+    return { kind: 'empty' };
+  }, [form.sizes, form.fabric, sizeCosts]);
 
   // 이미지 업로드
   const handleImageUpload = (e) => {
@@ -1349,24 +1540,18 @@ function ProductForm({ product, types, vendors, materialKinds, onSave, onCancel 
                 </button>
               </div>
 
-              <div className="section-label mt-3">단가 / 요척</div>
+              <div className="section-label mt-3">단위 / 단가</div>
               <div className="flex gap-1">
                 <select value={form.fabric?.unit || 'yds'} onChange={e => setFabricField('unit', e.target.value)}
                   className="input-field-sm w-20">
                   <option value="yds">yds</option>
                   <option value="kg">kg</option>
                 </select>
-                <input type="number" placeholder="단가" value={form.fabric?.price || ''}
+                <input type="number" placeholder={`단가 (원/${form.fabric?.unit || 'yds'})`} value={form.fabric?.price || ''}
                   onChange={e => setFabricField('price', parseFloat(e.target.value) || 0)}
                   className="input-field-sm flex-1" />
               </div>
-              <input type="number" step="0.01" placeholder={`요척 (${form.fabric?.unit || 'yds'})`}
-                value={form.fabric?.yoChuk || ''}
-                onChange={e => setFabricField('yoChuk', parseFloat(e.target.value) || 0)}
-                className="input-field-sm" />
-              {form.fabric?.yoChuk > 0 && form.fabric?.price > 0 && (
-                <div className="text-xs text-gray-500 mt-1">소계: ₩{((form.fabric.yoChuk) * (form.fabric.price)).toFixed(0)}</div>
-              )}
+              <div className="text-[10px] text-gray-400 mt-1">💡 사용량은 아래 "사이즈별 사용량"에서 입력</div>
             </MindmapCard>
 
             {/* ⚙ 가공 */}
@@ -1454,13 +1639,11 @@ function ProductForm({ product, types, vendors, materialKinds, onSave, onCancel 
                         <option value="yds">yds</option>
                         <option value="kg">kg</option>
                       </select>
-                      <input type="number" placeholder="단가" value={m.price}
+                      <input type="number" placeholder={`단가 (원/${m.unit || 'ea'})`} value={m.price}
                         onChange={e => updateMaterial(idx, 'price', parseFloat(e.target.value) || 0)}
                         className="input-field-sm flex-1" />
                     </div>
-                    <input type="number" step="0.01" placeholder={`사용량 (${m.unit})`} value={m.qty}
-                      onChange={e => updateMaterial(idx, 'qty', parseFloat(e.target.value) || 0)}
-                      className="input-field-sm" />
+                    <div className="text-[10px] text-gray-400">💡 사용량은 아래 "사이즈별 사용량"에서 입력</div>
                   </div>
                 </div>
               ))}
@@ -1611,28 +1794,157 @@ function ProductForm({ product, types, vendors, materialKinds, onSave, onCancel 
                   </div>
                 </div>
 
-                {/* 원가 */}
+                {/* 원가 박스 (상태별) */}
                 <div className="bg-gray-50 rounded-xl p-4">
-                  <div className="text-xs text-gray-500 mb-1">💰 총 원가</div>
-                  <div className="text-2xl font-bold text-gray-900">₩{totalCost.toLocaleString()}</div>
-                  <div className="text-xs text-gray-400 mt-2 space-y-0.5">
-                    {form.fabric?.yoChuk > 0 && form.fabric?.price > 0 && (
-                      <div>• 원단: ₩{((form.fabric.yoChuk) * (form.fabric.price)).toFixed(0)}</div>
-                    )}
-                    {form.sewing?.price > 0 && <div>• 봉제: ₩{form.sewing.price.toLocaleString()}</div>}
-                    {form.materials?.length > 0 && (
-                      <div>• 부자재: ₩{form.materials.reduce((s, m) => s + (m.qty || 0) * (m.price || 0), 0).toFixed(0)}</div>
-                    )}
-                    {Object.entries(form.processing || {}).filter(([_, v]) => v.use).map(([k, v]) => (
-                      <div key={k}>• {PROC_LABELS[k]}: ₩{(v.price || 0).toLocaleString()}</div>
-                    ))}
-                  </div>
+                  <div className="text-xs font-semibold text-gray-700 mb-2">💰 원가 정보</div>
+                  
+                  {costStatus.kind === 'noSize' && (
+                    <div className="text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-lg p-2">
+                      ⚠️ 사이즈를 먼저 선택하세요
+                    </div>
+                  )}
+                  
+                  {costStatus.kind === 'noFabricInfo' && (
+                    <div className="text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-lg p-2">
+                      ⚠️ 원부자재 정보 부족으로 인한 원가 미출력<br/>
+                      <span className="text-[10px] text-orange-600 mt-1 block">
+                        원단 거래처와 단가를 먼저 입력하세요
+                      </span>
+                    </div>
+                  )}
+                  
+                  {(costStatus.kind === 'empty' || costStatus.kind === 'partial' || costStatus.kind === 'complete') && (
+                    <div>
+                      <div className="text-[10px] text-gray-500 mb-2">단위당 단가 기준</div>
+                      <div className="space-y-1 text-xs mb-3">
+                        {form.fabric?.price > 0 && (
+                          <div className="flex justify-between">
+                            <span>🧵 원단</span>
+                            <span className="text-gray-700">₩{form.fabric.price.toLocaleString()}/{form.fabric.unit}</span>
+                          </div>
+                        )}
+                        {(form.materials || []).filter(m => m.price > 0).map((m, idx) => (
+                          <div key={idx} className="flex justify-between">
+                            <span>🔧 {m.name || '부자재'}</span>
+                            <span className="text-gray-700">₩{m.price.toLocaleString()}/{m.unit}</span>
+                          </div>
+                        ))}
+                        {form.sewing?.price > 0 && (
+                          <div className="flex justify-between">
+                            <span>🏭 봉제</span>
+                            <span className="text-gray-700">₩{form.sewing.price.toLocaleString()}/장</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="border-t border-gray-200 pt-2 mt-2">
+                        <div className="text-xs font-semibold text-gray-700 mb-1">사이즈별 예상 원가</div>
+                        <div className="space-y-1 text-xs">
+                          {form.sizes.map(sz => {
+                            const c = sizeCosts[sz];
+                            return (
+                              <div key={sz} className="flex justify-between items-center">
+                                <span className="font-medium">{sz}</span>
+                                {c?.total !== null ? (
+                                  <span className="font-semibold text-gray-900">₩{Math.round(c.total).toLocaleString()}</span>
+                                ) : (
+                                  <span className="text-[10px] text-orange-600">⚠️ {c?.missing?.join(', ') || '사용량 미입력'}</span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      
+                      <div className="text-[10px] text-gray-400 mt-2 pt-2 border-t border-gray-100">
+                        💡 실제 비용은 ⚡신속주문에서 수량 기반으로 정확히 계산
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* 사이즈별 사용량 테이블 (매트릭스) */}
+      {form.sizes && form.sizes.length > 0 && (
+        <div className="main-card p-6">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <div className="text-sm font-semibold text-gray-700">📐 사이즈별 사용량 (수기 입력)</div>
+              <div className="text-xs text-gray-500 mt-1">
+                사이즈마다 원단/부자재의 실제 사용량을 입력하세요. 이 값으로 정확한 원가가 계산됩니다.
+              </div>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b-2 border-gray-200">
+                  <th className="text-left py-2 px-3 text-xs text-gray-600 w-48">자재</th>
+                  {form.sizes.map(sz => (
+                    <th key={sz} className="py-2 px-2 text-xs text-gray-600 text-center" style={{minWidth: '90px'}}>
+                      {sz}
+                    </th>
+                  ))}
+                  <th className="py-2 px-2 text-xs text-gray-600 w-16">단위</th>
+                </tr>
+              </thead>
+              <tbody>
+                {/* 원단 */}
+                {form.fabric?.vendorName && (
+                  <tr className="border-b border-gray-100">
+                    <td className="py-2 px-3">
+                      <div className="text-xs font-medium">🧵 {form.fabric.name || '원단'}</div>
+                      <div className="text-[10px] text-gray-400">{form.fabric.vendorName}</div>
+                    </td>
+                    {form.sizes.map(sz => (
+                      <td key={sz} className="py-1 px-1">
+                        <input type="number" step="0.01"
+                          value={form.sizeUsage?.fabric?.[sz] || ''}
+                          onChange={e => setFabricUsage(sz, e.target.value)}
+                          className="input-field-sm text-center"
+                          placeholder="0" />
+                      </td>
+                    ))}
+                    <td className="py-2 px-2 text-xs text-gray-500 text-center">{form.fabric.unit}</td>
+                  </tr>
+                )}
+
+                {/* 부자재 */}
+                {(form.materials || []).map((m, idx) => (
+                  <tr key={idx} className="border-b border-gray-100">
+                    <td className="py-2 px-3">
+                      <div className="text-xs font-medium">🔧 {m.name || `부자재 #${idx+1}`}</div>
+                      <div className="text-[10px] text-gray-400">{m.vendorName || '-'}</div>
+                    </td>
+                    {form.sizes.map(sz => (
+                      <td key={sz} className="py-1 px-1">
+                        <input type="number" step="0.01"
+                          value={form.sizeUsage?.materials?.[`m_${idx}`]?.[sz] || ''}
+                          onChange={e => setMaterialUsage(idx, sz, e.target.value)}
+                          className="input-field-sm text-center"
+                          placeholder="0" />
+                      </td>
+                    ))}
+                    <td className="py-2 px-2 text-xs text-gray-500 text-center">{m.unit}</td>
+                  </tr>
+                ))}
+
+                {!form.fabric?.vendorName && (form.materials || []).length === 0 && (
+                  <tr>
+                    <td colSpan={form.sizes.length + 2} className="py-6 text-center text-xs text-gray-400">
+                      원단 또는 부자재 정보를 먼저 입력하세요
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* 하단 안내 & 버튼 */}
       <div className="main-card p-4 bg-blue-50 border-blue-100">
@@ -1684,12 +1996,46 @@ function ProductList({ products, types, onNew, onEdit, onDelete, onOpenTypeManag
   };
 
   const calculateCost = (p) => {
-    let cost = 0;
-    if (p.fabric) cost += (p.fabric.yoChuk || 0) * (p.fabric.price || 0);
-    if (p.sewing) cost += p.sewing.price || 0;
-    (p.materials || []).forEach(m => cost += (m.qty || 0) * (m.price || 0));
-    Object.values(p.processing || {}).forEach(proc => { if (proc.use) cost += proc.price || 0; });
-    return Math.round(cost);
+    // 모든 사이즈가 입력되어 있을 때만 평균 원가 반환
+    if (!p.sizes || p.sizes.length === 0) return null;
+    
+    const costs = [];
+    let anyMissing = false;
+    
+    p.sizes.forEach(sz => {
+      let c = 0;
+      let missing = false;
+      
+      // 원단
+      const fabricUse = p.sizeUsage?.fabric?.[sz];
+      if (p.fabric?.vendorName && p.fabric?.price > 0) {
+        if (fabricUse > 0) c += fabricUse * p.fabric.price;
+        else missing = true;
+      }
+      
+      // 부자재
+      (p.materials || []).forEach((m, idx) => {
+        if (m.vendorName && m.price > 0) {
+          const use = p.sizeUsage?.materials?.[`m_${idx}`]?.[sz];
+          if (use > 0) c += use * m.price;
+          else missing = true;
+        }
+      });
+      
+      // 봉제 (사이즈 무관)
+      c += p.sewing?.price || 0;
+      
+      // 가공 (사이즈 무관)
+      Object.values(p.processing || {}).forEach(proc => { 
+        if (proc.use) c += proc.price || 0; 
+      });
+      
+      if (missing) anyMissing = true;
+      costs.push(c);
+    });
+    
+    if (anyMissing || costs.length === 0) return null;
+    return Math.round(costs.reduce((s, c) => s + c, 0) / costs.length);
   };
 
   return (
@@ -1748,7 +2094,12 @@ function ProductList({ products, types, onNew, onEdit, onDelete, onOpenTypeManag
                   <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-gray-900 text-white rounded-lg px-3 py-2 text-xs whitespace-nowrap z-20 shadow-lg pointer-events-none">
                     <div className="font-semibold">{p.name}</div>
                     <div className="text-gray-300">{types[p.typeId]?.label || '?'}{getTypeSummary(p) && ' · ' + getTypeSummary(p)}</div>
-                    <div className="text-gray-300">₩{calculateCost(p).toLocaleString()}</div>
+                    {(() => {
+                      const cost = calculateCost(p);
+                      return cost !== null 
+                        ? <div className="text-gray-300">평균 ₩{cost.toLocaleString()}</div>
+                        : <div className="text-orange-300">사용량 미입력</div>;
+                    })()}
                   </div>
                 )}
               </div>
@@ -1781,7 +2132,12 @@ function ProductList({ products, types, onNew, onEdit, onDelete, onOpenTypeManag
                     <div className="text-xs text-gray-500">
                       색상 {Object.keys(p.elColors || {}).length || p.fabric?.colors?.length || 0} · 사이즈 {p.sizes?.length || 0}
                     </div>
-                    <div className="text-sm font-semibold text-gray-900">₩{calculateCost(p).toLocaleString()}</div>
+                    {(() => {
+                      const cost = calculateCost(p);
+                      return cost !== null 
+                        ? <div className="text-sm font-semibold text-gray-900">평균 ₩{cost.toLocaleString()}</div>
+                        : <div className="text-xs text-orange-600">⚠️ 사용량 미입력</div>;
+                    })()}
                   </>
                 )}
               </div>
@@ -2108,7 +2464,7 @@ function ProductsMaster() {
 
   // 샘플 데이터
   useEffect(() => {
-    const hasSample = storage.get('el_sample_added_v3', false);
+    const hasSample = storage.get('el_sample_added_v4', false);
     if (!hasSample && products.length === 0) {
       const sample = {
         id: 'sample-1', name: '글램튜브롱&숏', typeId: 'tshirt',
@@ -2119,12 +2475,12 @@ function ProductsMaster() {
           vendorAddr: 'A동 301호', vendorBizNo: '123-45-67890',
           name: '소프트핏',
           colors: ['Navy', 'White'],
-          unit: 'yds', price: 4500, yoChuk: 0.35
+          unit: 'yds', price: 4500
         },
         materials: [
           {
             vendorName: 'OO부자재', vendorPhone: '', vendorAddr: '', vendorBizNo: '',
-            name: '사이즈라벨', kind: '사이즈라벨', unit: 'ea', price: 300, qty: 1
+            name: '사이즈라벨', kind: '사이즈라벨', unit: 'ea', price: 300
           },
         ],
         sewing: {
@@ -2138,6 +2494,10 @@ function ProductsMaster() {
           printing: { use: false, vendorName: '', vendorPhone: '', vendorAddr: '', vendorBizNo: '', price: 0 },
         },
         elColors: { 'Navy': '네이비', 'White': '화이트' },
+        sizeUsage: {
+          fabric: { S: 0.30, M: 0.35, L: 0.40 },
+          materials: { m_0: { S: 1, M: 1, L: 1 } },
+        },
         createdAt: Date.now(),
       };
       setProducts([sample]);
@@ -2146,7 +2506,7 @@ function ProductsMaster() {
       setVendors(v);
       storage.set('el_products', [sample]);
       storage.set('el_vendors', v);
-      storage.set('el_sample_added_v3', true);
+      storage.set('el_sample_added_v4', true);
     }
   }, []);
 
