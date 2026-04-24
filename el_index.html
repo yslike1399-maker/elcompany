@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>이엘컴퍼니 통합관리</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg-main: #F5F5F7;
+    --bg-card: #FFFFFF;
+    --text-primary: #1D1D1F;
+    --text-secondary: #86868B;
+    --text-tertiary: #C7C7CC;
+    --border: #E5E5EA;
+    --border-light: #F2F2F7;
+    --hover: #FAFAFA;
+    --active: #F0F0F2;
+    --accent: #1D1D1F;
+  }
+  body {
+    font-family: 'Inter', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg-main);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+  }
+  .logo-main { font-family: 'Inter', sans-serif; font-weight: 300; letter-spacing: 0.15em; }
+  .sidebar-item { transition: background 0.15s ease; }
+  .sidebar-item:hover { background: var(--hover); }
+  .sidebar-item.active { background: var(--active); font-weight: 600; }
+  .sub-item { padding-left: 2.75rem; font-size: 0.875rem; color: var(--text-secondary); transition: all 0.15s ease; }
+  .sub-item:hover { color: var(--text-primary); background: var(--hover); }
+  .sub-item.active { color: var(--text-primary); background: var(--active); font-weight: 600; }
+  .accordion-arrow { transition: transform 0.2s ease; }
+  .accordion-arrow.open { transform: rotate(90deg); }
+  .main-card { background: var(--bg-card); border-radius: 16px; border: 1px solid var(--border); }
+  .placeholder-box { background: var(--bg-card); border: 2px dashed var(--border); border-radius: 16px; padding: 4rem 2rem; text-align: center; }
+  .version-badge { font-size: 0.625rem; color: var(--text-tertiary); letter-spacing: 0.05em; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #D1D1D6; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #AEAEB2; }
+
+  .type-main-btn { transition: all 0.2s ease; background: white; border: 2px solid var(--border); }
+  .type-main-btn:hover { border-color: var(--text-primary); transform: translateY(-2px); }
+  .type-main-btn.selected { border-color: var(--text-primary); background: #F9F9FB; }
+  .type-sub-btn { transition: all 0.15s ease; background: white; border: 1px solid var(--border); color: var(--text-secondary); }
+  .type-sub-btn:hover { border-color: var(--text-primary); color: var(--text-primary); }
+  .type-sub-btn.selected { background: var(--text-primary); color: white; border-color: var(--text-primary); }
+
+  .mindmap-card { background: white; border: 1.5px solid var(--border); border-radius: 14px; padding: 1rem; transition: all 0.2s ease; min-height: 150px; }
+  .mindmap-card:hover { border-color: var(--text-secondary); box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
+  .mindmap-card.filled { border-color: #C0C0C5; background: #FAFAFA; }
+
+  .silhouette-box { background: white; border: 2px solid var(--border); border-radius: 16px; display: flex; align-items: center; justify-content: center; min-height: 280px; }
+
+  .input-field { width: 100%; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 8px; font-size: 0.875rem; background: white; transition: border-color 0.15s ease; }
+  .input-field:focus { outline: none; border-color: var(--text-primary); }
+  .btn-primary { background: var(--text-primary); color: white; padding: 0.625rem 1.25rem; border-radius: 10px; font-size: 0.875rem; font-weight: 500; transition: opacity 0.15s ease; }
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-primary:disabled { opacity: 0.3; cursor: not-allowed; }
+  .btn-secondary { background: white; color: var(--text-primary); padding: 0.625rem 1.25rem; border-radius: 10px; font-size: 0.875rem; font-weight: 500; border: 1px solid var(--border); transition: all 0.15s ease; }
+  .btn-secondary:hover { background: var(--hover); }
+
+  .product-card { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 1rem; cursor: pointer; transition: all 0.2s ease; }
+  .product-card:hover { border-color: var(--text-primary); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
+
+  .badge { display: inline-block; padding: 0.125rem 0.5rem; border-radius: 6px; font-size: 0.625rem; font-weight: 500; background: var(--active); color: var(--text-secondary); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useMemo } = React;
+
+const MENU = [
+  { id: 'dashboard', label: '대시보드', icon: '🏠', type: 'single' },
+  {
+    id: 'products', label: '상품관리', number: '1', icon: '📦', type: 'group',
+    children: [
+      { id: 'products-master', label: '상품마스터', number: '1-1' },
+      { id: 'products-soldout', label: '품절관리', number: '1-2' },
+    ],
+  },
+  { id: 'production', label: '생산관리', number: '2', icon: '🧵', type: 'single' },
+  { id: 'vendors', label: '거래처관리', number: '3', icon: '🏢', type: 'single' },
+  { id: 'delivery', label: '납품거래처', number: '4', icon: '📦', type: 'single' },
+];
+
+const getTabMeta = (tabId) => {
+  for (const m of MENU) {
+    if (m.id === tabId) return { number: m.number, label: m.label, icon: m.icon };
+    if (m.children) {
+      const c = m.children.find(c => c.id === tabId);
+      if (c) return { number: c.number, label: c.label, icon: m.icon };
+    }
+  }
+  return { number: '', label: '대시보드', icon: '🏠' };
+};
+
+const DEFAULT_TYPES = {
+  dress: {
+    id: 'dress', label: '원피스', flow: ['sleeve', 'length'],
+    options: {
+      sleeve: [{ id: 'long', label: '긴소매' }, { id: 'short', label: '반소매' }, { id: 'sleeveless', label: '민소매' }],
+      length: [{ id: 'long-dress', label: '롱' }, { id: 'mini-dress', label: '미니' }],
+    },
+  },
+  tshirt: {
+    id: 'tshirt', label: '티셔츠', flow: ['sleeve', 'neck'],
+    options: {
+      sleeve: [{ id: 'long', label: '긴소매' }, { id: 'short', label: '반소매' }, { id: 'sleeveless', label: '민소매' }],
+      neck: [{ id: 'round', label: '라운드넥' }, { id: 'v', label: '브이넥' }, { id: 'collar', label: '카라' }],
+    },
+  },
+  knit: {
+    id: 'knit', label: '니트', flow: ['sleeve', 'neck'],
+    options: {
+      sleeve: [{ id: 'long', label: '긴소매' }, { id: 'short', label: '반소매' }, { id: 'sleeveless', label: '민소매' }],
+      neck: [{ id: 'round', label: '라운드넥' }, { id: 'v', label: '브이넥' }],
+    },
+  },
+  sweatshirt: {
+    id: 'sweatshirt', label: '맨투맨', flow: ['shape', 'zip'],
+    options: {
+      shape: [{ id: 'hood', label: '후드형' }, { id: 'round', label: '라운드형' }],
+      zip: [{ id: 'zipup', label: '집업' }, { id: 'plain', label: '일반' }],
+    },
+  },
+  bottom: {
+    id: 'bottom', label: '하의', flow: ['kind'],
+    options: {
+      kind: [{ id: 'leggings', label: '레깅스' }, { id: 'skirt', label: '스커트' }, { id: 'long-pants', label: '긴바지' }, { id: 'short-pants', label: '반바지' }],
+    },
+  },
+  outer: { id: 'outer', label: '아우터', flow: [], options: {} },
+};
+
+const Silhouette = ({ typeId, size = 200 }) => {
+  const stroke = "#1D1D1F";
+  const common = { fill: "none", stroke, strokeWidth: 2, strokeLinejoin: "round", strokeLinecap: "round" };
+
+  switch(typeId) {
+    case 'dress':
+      return (
+        <svg viewBox="0 0 200 280" width={size} height={size * 1.4}>
+          <circle cx="100" cy="30" r="15" {...common} />
+          <path d="M 75 50 Q 70 55 65 60 L 50 90 L 60 95 L 70 75" {...common} />
+          <path d="M 125 50 Q 130 55 135 60 L 150 90 L 140 95 L 130 75" {...common} />
+          <path d="M 75 50 L 75 70 L 60 240 L 140 240 L 125 70 L 125 50 Z" {...common} />
+          <path d="M 75 50 Q 100 55 125 50" {...common} />
+        </svg>
+      );
+    case 'tshirt':
+      return (
+        <svg viewBox="0 0 200 220" width={size} height={size * 1.1}>
+          <circle cx="100" cy="30" r="15" {...common} />
+          <path d="M 70 55 L 40 75 L 50 110 L 65 100 L 65 180 L 135 180 L 135 100 L 150 110 L 160 75 L 130 55" {...common} />
+          <path d="M 70 55 Q 100 65 130 55" {...common} />
+        </svg>
+      );
+    case 'knit':
+      return (
+        <svg viewBox="0 0 200 220" width={size} height={size * 1.1}>
+          <circle cx="100" cy="30" r="15" {...common} />
+          <path d="M 70 55 L 35 80 L 45 160 L 65 155 L 65 190 L 135 190 L 135 155 L 155 160 L 165 80 L 130 55" {...common} />
+          <path d="M 70 55 Q 100 68 130 55" {...common} />
+          <line x1="85" y1="100" x2="85" y2="180" stroke={stroke} strokeWidth="0.5" strokeDasharray="2,2" opacity="0.4" />
+          <line x1="100" y1="100" x2="100" y2="180" stroke={stroke} strokeWidth="0.5" strokeDasharray="2,2" opacity="0.4" />
+          <line x1="115" y1="100" x2="115" y2="180" stroke={stroke} strokeWidth="0.5" strokeDasharray="2,2" opacity="0.4" />
+        </svg>
+      );
+    case 'sweatshirt':
+      return (
+        <svg viewBox="0 0 200 220" width={size} height={size * 1.1}>
+          <circle cx="100" cy="30" r="15" {...common} />
+          <path d="M 70 55 L 40 75 L 50 160 L 65 155 L 65 190 L 135 190 L 135 155 L 150 160 L 160 75 L 130 55" {...common} />
+          <path d="M 70 55 Q 85 20 100 20 Q 115 20 130 55" {...common} />
+          <line x1="95" y1="55" x2="95" y2="85" {...common} />
+          <line x1="105" y1="55" x2="105" y2="85" {...common} />
+        </svg>
+      );
+    case 'bottom':
+      return (
+        <svg viewBox="0 0 200 280" width={size} height={size * 1.4}>
+          <path d="M 65 20 L 135 20 L 135 40 L 130 260 L 108 260 L 100 100 L 92 260 L 70 260 L 65 40 Z" {...common} />
+          <line x1="65" y1="35" x2="135" y2="35" {...common} />
+        </svg>
+      );
+    case 'outer':
+      return (
+        <svg viewBox="0 0 200 240" width={size} height={size * 1.2}>
+          <circle cx="100" cy="30" r="15" {...common} />
+          <path d="M 70 55 L 35 85 L 45 115 L 70 105 L 70 210 L 130 210 L 130 105 L 155 115 L 165 85 L 130 55" {...common} />
+          <path d="M 70 55 L 100 70 L 130 55" {...common} />
+          <line x1="100" y1="70" x2="100" y2="205" {...common} />
+          <path d="M 85 55 L 100 70 L 115 55" {...common} />
+          <line x1="75" y1="150" x2="95" y2="150" {...common} />
+          <line x1="105" y1="150" x2="125" y2="150" {...common} />
+        </svg>
+      );
+    default:
+      return (
+        <div className="text-gray-300 text-sm text-center p-8">
+          타입을 선택하면<br/>실루엣이 표시됩니다
+        </div>
+      );
+  }
+};
+
+const TypeIcon = ({ typeId, size = 48 }) => {
+  const stroke = "#1D1D1F";
+  const common = { fill: "none", stroke, strokeWidth: 1.5, strokeLinejoin: "round", strokeLinecap: "round" };
+
+  switch(typeId) {
+    case 'dress':
+      return (
+        <svg viewBox="0 0 50 60" width={size * 0.8} height={size}>
+          <circle cx="25" cy="10" r="4" {...common} />
+          <path d="M 19 17 L 13 22 L 16 28 L 20 26 L 20 22 L 16 52 L 34 52 L 30 22 L 30 26 L 34 28 L 37 22 L 31 17 Z" {...common} />
+        </svg>
+      );
+    case 'tshirt':
+      return (
+        <svg viewBox="0 0 50 50" width={size} height={size}>
+          <circle cx="25" cy="10" r="4" {...common} />
+          <path d="M 19 17 L 10 22 L 13 30 L 18 28 L 18 45 L 32 45 L 32 28 L 37 30 L 40 22 L 31 17 Z" {...common} />
+        </svg>
+      );
+    case 'knit':
+      return (
+        <svg viewBox="0 0 50 50" width={size} height={size}>
+          <circle cx="25" cy="10" r="4" {...common} />
+          <path d="M 19 17 L 9 23 L 12 40 L 17 38 L 17 46 L 33 46 L 33 38 L 38 40 L 41 23 L 31 17 Z" {...common} />
+          <line x1="22" y1="27" x2="22" y2="45" stroke={stroke} strokeWidth="0.3" opacity="0.5" />
+          <line x1="28" y1="27" x2="28" y2="45" stroke={stroke} strokeWidth="0.3" opacity="0.5" />
+        </svg>
+      );
+    case 'sweatshirt':
+      return (
+        <svg viewBox="0 0 50 50" width={size} height={size}>
+          <circle cx="25" cy="10" r="4" {...common} />
+          <path d="M 19 17 Q 22 6 25 6 Q 28 6 31 17" {...common} />
+          <path d="M 19 17 L 10 22 L 13 40 L 18 38 L 18 46 L 32 46 L 32 38 L 37 40 L 40 22 L 31 17" {...common} />
+        </svg>
+      );
+    case 'bottom':
+      return (
+        <svg viewBox="0 0 50 60" width={size * 0.85} height={size}>
+          <path d="M 16 5 L 34 5 L 34 12 L 32 55 L 27 55 L 25 25 L 23 55 L 18 55 L 16 12 Z" {...common} />
+        </svg>
+      );
+    case 'outer':
+      return (
+        <svg viewBox="0 0 50 50" width={size} height={size}>
+          <circle cx="25" cy="10" r="4" {...common} />
+          <path d="M 19 17 L 10 24 L 14 30 L 19 28 L 19 46 L 31 46 L 31 28 L 36 30 L 40 24 L 31 17" {...common} />
+          <line x1="25" y1="18" x2="25" y2="45" {...common} />
+        </svg>
+      );
+    default: return null;
+  }
+};
+
+const storage = {
+  get(key, fallback) {
+    try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+    catch { return fallback; }
+  },
+  set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} }
+};
+
+function Sidebar({ active, setActive }) {
+  const [openGroups, setOpenGroups] = useState({ products: true });
+  const toggleGroup = (id) => setOpenGroups(prev => ({ ...prev, [id]: !prev[id] }));
+  const handleMenuClick = (menu) => {
+    if (menu.type === 'single') setActive(menu.id);
+    else toggleGroup(menu.id);
+  };
+
+  return (
+    <aside className="w-64 bg-white border-r border-gray-200 flex flex-col h-screen sticky top-0">
+      <div className="px-6 py-7 border-b border-gray-100">
+        <div className="logo-main text-xl text-gray-900">ELCOMPANY</div>
+        <div className="text-xs text-gray-500 mt-1 font-light">이엘컴퍼니 통합관리</div>
+      </div>
+
+      <nav className="flex-1 overflow-y-auto py-3">
+        {MENU.map((menu) => {
+          const isGroup = menu.type === 'group';
+          const isActiveMenu = active === menu.id;
+          const hasActiveChild = menu.children?.some(c => c.id === active);
+
+          return (
+            <div key={menu.id}>
+              <button onClick={() => handleMenuClick(menu)}
+                className={`sidebar-item w-full flex items-center gap-3 px-6 py-3 text-left text-sm ${(isActiveMenu || hasActiveChild) ? 'active' : ''}`}>
+                <span className="text-base w-5">{menu.icon}</span>
+                <span className="flex-1">
+                  {menu.number && <span className="text-gray-400 mr-1">{menu.number}.</span>}
+                  {menu.label}
+                </span>
+                {isGroup && (
+                  <span className={`accordion-arrow text-xs text-gray-400 ${openGroups[menu.id] ? 'open' : ''}`}>▶</span>
+                )}
+              </button>
+
+              {isGroup && openGroups[menu.id] && (
+                <div className="py-1">
+                  {menu.children.map((child) => (
+                    <button key={child.id} onClick={() => setActive(child.id)}
+                      className={`sub-item w-full flex items-center gap-2 py-2 text-left ${active === child.id ? 'active' : ''}`}>
+                      <span className="text-gray-400 text-xs">{child.number}</span>
+                      <span>{child.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </nav>
+
+      <div className="px-6 py-3 border-t border-gray-100">
+        <div className="version-badge">v20260425.01</div>
+      </div>
+    </aside>
+  );
+}
+
+function Header({ tabMeta }) {
+  return (
+    <div className="bg-white border-b border-gray-200 px-8 py-5 sticky top-0 z-10">
+      <div className="flex items-center gap-3">
+        <span className="text-2xl">{tabMeta.icon}</span>
+        <div>
+          <div className="flex items-baseline gap-2">
+            {tabMeta.number && <span className="text-sm text-gray-400 font-medium">{tabMeta.number}</span>}
+            <h1 className="text-xl font-semibold text-gray-900">{tabMeta.label}</h1>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MindmapCard({ title, filled, children }) {
+  return (
+    <div className={`mindmap-card ${filled ? 'filled' : ''}`}>
+      <div className="text-xs font-semibold text-gray-700 mb-2">{title}</div>
+      <div className="space-y-1">{children}</div>
+    </div>
+  );
+}
+
+function ProductForm({ product, types, onSave, onCancel }) {
+  const [form, setForm] = useState(() => product ? JSON.parse(JSON.stringify(product)) : {
+    name: '', typeId: null, typeSelections: {}, image: '',
+    colors: [], sizes: [],
+    fabric: { vendor: '', name: '', yoChuk: 0, price: 0 },
+    materials: [],
+    sewing: { vendor: '', price: 0 },
+    processing: {
+      dyeing: { use: false, vendor: '', price: 0 },
+      tenter: { use: false, vendor: '', price: 0 },
+      transfer: { use: false, vendor: '', price: 0 },
+      printing: { use: false, vendor: '', price: 0 },
+    },
+  });
+
+  const selectedType = types[form.typeId];
+  const [colorInput, setColorInput] = useState('');
+  const SIZE_OPTIONS = ['S', 'M', 'L', '55', '66', '77', 'FREE'];
+
+  const totalCost = useMemo(() => {
+    let c = 0;
+    if (form.fabric) c += (form.fabric.yoChuk || 0) * (form.fabric.price || 0);
+    if (form.sewing) c += form.sewing.price || 0;
+    (form.materials || []).forEach(m => c += (m.qty || 0) * (m.price || 0));
+    Object.values(form.processing || {}).forEach(p => { if (p.use) c += p.price || 0; });
+    return Math.round(c);
+  }, [form]);
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setForm(prev => ({ ...prev, image: ev.target.result }));
+    reader.readAsDataURL(file);
+  };
+
+  const addColor = () => {
+    if (colorInput.trim() && !form.colors.includes(colorInput.trim())) {
+      setForm(prev => ({ ...prev, colors: [...prev.colors, colorInput.trim()] }));
+      setColorInput('');
+    }
+  };
+
+  const removeColor = (c) => setForm(prev => ({ ...prev, colors: prev.colors.filter(x => x !== c) }));
+
+  const toggleSize = (s) => setForm(prev => ({
+    ...prev, sizes: prev.sizes.includes(s) ? prev.sizes.filter(x => x !== s) : [...prev.sizes, s]
+  }));
+
+  const addMaterial = () => setForm(prev => ({
+    ...prev, materials: [...prev.materials, { name: '', qty: 1, unit: 'ea', price: 0 }]
+  }));
+
+  const updateMaterial = (idx, field, value) => setForm(prev => ({
+    ...prev, materials: prev.materials.map((m, i) => i === idx ? { ...m, [field]: value } : m)
+  }));
+
+  const removeMaterial = (idx) => setForm(prev => ({ ...prev, materials: prev.materials.filter((_, i) => i !== idx) }));
+
+  const updateProc = (key, field, value) => setForm(prev => ({
+    ...prev, processing: { ...prev.processing, [key]: { ...prev.processing[key], [field]: value } }
+  }));
+
+  const canSave = form.name.trim() && form.typeId;
+
+  return (
+    <div className="space-y-6 pb-8">
+      <div className="main-card p-6">
+        <div className="text-sm font-semibold text-gray-700 mb-4">1. 타입 선택</div>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+          {Object.values(types).map(t => (
+            <button key={t.id} onClick={() => setForm(prev => ({ ...prev, typeId: t.id, typeSelections: {} }))}
+              className={`type-main-btn rounded-xl p-4 flex flex-col items-center gap-2 ${form.typeId === t.id ? 'selected' : ''}`}>
+              <TypeIcon typeId={t.id} size={44} />
+              <div className="text-xs font-medium">{t.label}</div>
+            </button>
+          ))}
+        </div>
+
+        {selectedType && selectedType.flow.length > 0 && (
+          <div className="space-y-3 pt-4 border-t border-gray-100">
+            {selectedType.flow.map(key => {
+              const opts = selectedType.options[key] || [];
+              const labelMap = { sleeve: '소매', length: '기장', neck: '넥스타일', shape: '형태', zip: '집업여부', kind: '종류' };
+              return (
+                <div key={key} className="flex items-center gap-3 flex-wrap">
+                  <span className="text-xs font-medium text-gray-500 w-16">{labelMap[key] || key}</span>
+                  <div className="flex gap-2 flex-wrap">
+                    {opts.map(opt => (
+                      <button key={opt.id}
+                        onClick={() => setForm(prev => ({ ...prev, typeSelections: { ...prev.typeSelections, [key]: opt.id } }))}
+                        className={`type-sub-btn rounded-lg px-3 py-1.5 text-xs ${form.typeSelections?.[key] === opt.id ? 'selected' : ''}`}>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="main-card p-6">
+        <div className="text-sm font-semibold text-gray-700 mb-4">2. 생산 정보 (마인드맵)</div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
+          <div className="lg:col-start-2">
+            <MindmapCard title="🧵 원단" filled={!!form.fabric?.vendor}>
+              <input type="text" placeholder="원단업체" value={form.fabric?.vendor || ''}
+                onChange={e => setForm(prev => ({ ...prev, fabric: { ...prev.fabric, vendor: e.target.value } }))}
+                className="input-field" />
+              <input type="text" placeholder="원단 종류" value={form.fabric?.name || ''}
+                onChange={e => setForm(prev => ({ ...prev, fabric: { ...prev.fabric, name: e.target.value } }))}
+                className="input-field mt-2" />
+              <div className="flex gap-2 mt-2">
+                <input type="number" step="0.01" placeholder="요척 (yds)" value={form.fabric?.yoChuk || ''}
+                  onChange={e => setForm(prev => ({ ...prev, fabric: { ...prev.fabric, yoChuk: parseFloat(e.target.value) || 0 } }))}
+                  className="input-field" />
+                <input type="number" placeholder="단가 (원)" value={form.fabric?.price || ''}
+                  onChange={e => setForm(prev => ({ ...prev, fabric: { ...prev.fabric, price: parseFloat(e.target.value) || 0 } }))}
+                  className="input-field" />
+              </div>
+              {form.fabric?.yoChuk > 0 && form.fabric?.price > 0 && (
+                <div className="text-xs text-gray-500 mt-2">소계: ₩{((form.fabric.yoChuk) * (form.fabric.price)).toFixed(0)}</div>
+              )}
+            </MindmapCard>
+          </div>
+
+          <div className="lg:row-start-2">
+            <MindmapCard title="🔧 부자재" filled={form.materials?.length > 0}>
+              {form.materials.map((m, idx) => (
+                <div key={idx} className="flex gap-1 mb-2 items-center">
+                  <input type="text" placeholder="이름" value={m.name}
+                    onChange={e => updateMaterial(idx, 'name', e.target.value)}
+                    className="input-field flex-1 text-xs" />
+                  <input type="number" step="0.01" placeholder="수량" value={m.qty}
+                    onChange={e => updateMaterial(idx, 'qty', parseFloat(e.target.value) || 0)}
+                    className="input-field w-16 text-xs" />
+                  <select value={m.unit} onChange={e => updateMaterial(idx, 'unit', e.target.value)}
+                    className="input-field w-14 text-xs">
+                    <option value="ea">ea</option>
+                    <option value="yds">yds</option>
+                  </select>
+                  <input type="number" placeholder="단가" value={m.price}
+                    onChange={e => updateMaterial(idx, 'price', parseFloat(e.target.value) || 0)}
+                    className="input-field w-16 text-xs" />
+                  <button onClick={() => removeMaterial(idx)} className="text-red-400 text-xs px-1">✕</button>
+                </div>
+              ))}
+              <button onClick={addMaterial} className="w-full text-xs py-1.5 bg-gray-50 hover:bg-gray-100 rounded">
+                + 부자재 추가
+              </button>
+            </MindmapCard>
+          </div>
+
+          <div className="lg:row-start-2">
+            <div className="silhouette-box h-full">
+              <div className="text-center">
+                <Silhouette typeId={form.typeId} size={180} />
+                {selectedType && (
+                  <div className="mt-3 text-xs text-gray-500">
+                    {selectedType.label}
+                    {selectedType.flow.map(key => {
+                      const opts = selectedType.options[key] || [];
+                      const sel = opts.find(o => o.id === form.typeSelections?.[key]);
+                      return sel ? ` · ${sel.label}` : '';
+                    }).join('')}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="lg:row-start-2">
+            <MindmapCard title="🏭 봉제" filled={!!form.sewing?.vendor}>
+              <input type="text" placeholder="봉제업체" value={form.sewing?.vendor || ''}
+                onChange={e => setForm(prev => ({ ...prev, sewing: { ...prev.sewing, vendor: e.target.value } }))}
+                className="input-field" />
+              <input type="number" placeholder="공임 (원/장)" value={form.sewing?.price || ''}
+                onChange={e => setForm(prev => ({ ...prev, sewing: { ...prev.sewing, price: parseFloat(e.target.value) || 0 } }))}
+                className="input-field mt-2" />
+            </MindmapCard>
+          </div>
+
+          <div className="lg:col-start-2 lg:row-start-3">
+            <MindmapCard title="⚙ 가공 (염색/텐타/전사/나염)" filled={Object.values(form.processing || {}).some(p => p.use)}>
+              {[
+                { key: 'dyeing', label: '염색', unit: 'kg' },
+                { key: 'tenter', label: '텐타', unit: 'yds' },
+                { key: 'transfer', label: '전사', unit: '판/도수' },
+                { key: 'printing', label: '나염', unit: '판/도수' },
+              ].map(({ key, label, unit }) => (
+                <div key={key} className="mb-2 pb-2 border-b border-gray-100 last:border-0">
+                  <label className="flex items-center gap-2 text-xs font-medium mb-1">
+                    <input type="checkbox" checked={form.processing[key]?.use || false}
+                      onChange={e => updateProc(key, 'use', e.target.checked)} />
+                    {label} <span className="text-gray-400">({unit})</span>
+                  </label>
+                  {form.processing[key]?.use && (
+                    <div className="flex gap-1 ml-5">
+                      <input type="text" placeholder="업체" value={form.processing[key].vendor || ''}
+                        onChange={e => updateProc(key, 'vendor', e.target.value)}
+                        className="input-field text-xs flex-1" />
+                      <input type="number" placeholder="단가" value={form.processing[key].price || ''}
+                        onChange={e => updateProc(key, 'price', parseFloat(e.target.value) || 0)}
+                        className="input-field text-xs w-20" />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </MindmapCard>
+          </div>
+        </div>
+      </div>
+
+      <div className="main-card p-6">
+        <div className="text-sm font-semibold text-gray-700 mb-4">3. 상품 기본 정보</div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">상품명</label>
+              <input type="text" value={form.name}
+                onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="예: 글램튜브롱&숏" className="input-field" />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">이미지</label>
+              <div className="flex items-center gap-3">
+                {form.image && <img src={form.image} alt="" className="w-16 h-16 object-cover rounded-lg border" />}
+                <label className="btn-secondary cursor-pointer text-xs">
+                  📷 업로드
+                  <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                </label>
+                {form.image && (
+                  <button onClick={() => setForm(prev => ({ ...prev, image: '' }))} className="text-xs text-red-500">제거</button>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">색상</label>
+              <div className="flex gap-1 mb-2">
+                <input type="text" value={colorInput}
+                  onChange={e => setColorInput(e.target.value)}
+                  onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), addColor())}
+                  placeholder="색상 입력 후 Enter" className="input-field" />
+                <button onClick={addColor} className="btn-secondary text-xs">+</button>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {form.colors.map(c => (
+                  <span key={c} className="badge flex items-center gap-1 text-xs">
+                    {c}
+                    <button onClick={() => removeColor(c)} className="text-gray-400 hover:text-red-500">✕</button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">사이즈</label>
+              <div className="flex flex-wrap gap-2">
+                {SIZE_OPTIONS.map(s => (
+                  <label key={s}
+                    className={`px-3 py-1.5 rounded-lg border text-xs cursor-pointer ${form.sizes.includes(s) ? 'bg-gray-900 text-white border-gray-900' : 'bg-white'}`}>
+                    <input type="checkbox" checked={form.sizes.includes(s)} onChange={() => toggleSize(s)} className="hidden" />
+                    {s}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-gray-50 rounded-xl p-4 mt-4">
+              <div className="text-xs text-gray-500 mb-1">💰 총 원가</div>
+              <div className="text-2xl font-bold text-gray-900">₩{totalCost.toLocaleString()}</div>
+              <div className="text-xs text-gray-400 mt-2 space-y-0.5">
+                {form.fabric?.yoChuk > 0 && form.fabric?.price > 0 && (
+                  <div>• 원단: ₩{((form.fabric.yoChuk) * (form.fabric.price)).toFixed(0)}</div>
+                )}
+                {form.sewing?.price > 0 && <div>• 봉제: ₩{form.sewing.price.toLocaleString()}</div>}
+                {form.materials?.length > 0 && (
+                  <div>• 부자재: ₩{form.materials.reduce((s, m) => s + (m.qty || 0) * (m.price || 0), 0).toFixed(0)}</div>
+                )}
+                {Object.entries(form.processing || {}).filter(([_, v]) => v.use).map(([k, v]) => {
+                  const labelMap = { dyeing: '염색', tenter: '텐타', transfer: '전사', printing: '나염' };
+                  return <div key={k}>• {labelMap[k]}: ₩{(v.price || 0).toLocaleString()}</div>;
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex gap-2 justify-end">
+        <button onClick={onCancel} className="btn-secondary">취소</button>
+        <button onClick={() => onSave(form)} disabled={!canSave} className="btn-primary">
+          {product ? '수정 저장' : '등록'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ProductList({ products, types, onNew, onEdit, onDelete, onOpenTypeManager }) {
+  const [search, setSearch] = useState('');
+  const [filterType, setFilterType] = useState('all');
+  const [cardSize, setCardSize] = useState('large');
+
+  const filtered = useMemo(() => {
+    return products.filter(p => {
+      if (filterType !== 'all' && p.typeId !== filterType) return false;
+      if (search && !p.name.includes(search)) return false;
+      return true;
+    });
+  }, [products, search, filterType]);
+
+  const getTypeSummary = (product) => {
+    const t = types[product.typeId];
+    if (!t) return '';
+    const parts = t.flow.map(key => {
+      const opts = t.options[key] || [];
+      const sel = opts.find(o => o.id === product.typeSelections?.[key]);
+      return sel?.label;
+    }).filter(Boolean);
+    return parts.join(' / ');
+  };
+
+  const calculateCost = (p) => {
+    let cost = 0;
+    if (p.fabric) cost += (p.fabric.yoChuk || 0) * (p.fabric.price || 0);
+    if (p.sewing) cost += p.sewing.price || 0;
+    (p.materials || []).forEach(m => cost += (m.qty || 0) * (m.price || 0));
+    Object.values(p.processing || {}).forEach(proc => { if (proc.use) cost += proc.price || 0; });
+    return Math.round(cost);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="main-card p-5">
+        <div className="flex flex-wrap items-center gap-3">
+          <button className="btn-primary" onClick={onNew}>➕ 새 상품 등록</button>
+          <button className="btn-secondary" onClick={onOpenTypeManager}>⚙ 타입 관리</button>
+          <div className="flex-1"></div>
+          <input type="text" placeholder="🔍 상품명 검색..." value={search}
+            onChange={e => setSearch(e.target.value)} className="input-field max-w-xs" />
+          <select value={filterType} onChange={e => setFilterType(e.target.value)} className="input-field max-w-xs">
+            <option value="all">전체 타입</option>
+            {Object.values(types).map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
+          <div className="flex gap-1 text-xs">
+            <button onClick={() => setCardSize('large')}
+              className={`px-2 py-1 rounded ${cardSize === 'large' ? 'bg-gray-900 text-white' : 'bg-white border'}`}>크게</button>
+            <button onClick={() => setCardSize('small')}
+              className={`px-2 py-1 rounded ${cardSize === 'small' ? 'bg-gray-900 text-white' : 'bg-white border'}`}>작게</button>
+          </div>
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="placeholder-box">
+          <div className="text-5xl mb-4 opacity-40">📦</div>
+          <div className="text-lg font-medium text-gray-700 mb-2">등록된 상품이 없습니다</div>
+          <div className="text-sm text-gray-500">"새 상품 등록" 버튼을 눌러 시작하세요</div>
+        </div>
+      ) : (
+        <div className={`grid gap-4 ${cardSize === 'large' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8'}`}>
+          {filtered.map(p => (
+            <div key={p.id} className="product-card" onClick={() => onEdit(p)}>
+              <div className="bg-gray-50 rounded-lg mb-3 flex items-center justify-center aspect-square">
+                {p.image ? (
+                  <img src={p.image} alt={p.name} className="w-full h-full object-contain rounded-lg" />
+                ) : (
+                  <div className="opacity-60">
+                    <Silhouette typeId={p.typeId} size={cardSize === 'large' ? 120 : 60} />
+                  </div>
+                )}
+              </div>
+              <div className="space-y-1">
+                <div className={`font-semibold text-gray-900 truncate ${cardSize === 'small' ? 'text-xs' : 'text-sm'}`}>{p.name}</div>
+                <div className="flex items-center gap-1 flex-wrap">
+                  <span className="badge">{types[p.typeId]?.label || '?'}</span>
+                  {cardSize === 'large' && getTypeSummary(p) && (
+                    <span className="text-xs text-gray-500">{getTypeSummary(p)}</span>
+                  )}
+                </div>
+                {cardSize === 'large' && (
+                  <>
+                    <div className="text-xs text-gray-500">색상 {p.colors?.length || 0} · 사이즈 {p.sizes?.length || 0}</div>
+                    <div className="text-sm font-semibold text-gray-900">₩{calculateCost(p).toLocaleString()}</div>
+                  </>
+                )}
+              </div>
+              {cardSize === 'large' && (
+                <div className="flex gap-1 mt-3 pt-3 border-t border-gray-100">
+                  <button onClick={(e) => { e.stopPropagation(); onEdit(p); }}
+                    className="flex-1 text-xs py-1.5 bg-gray-50 hover:bg-gray-100 rounded">수정</button>
+                  <button onClick={(e) => { e.stopPropagation(); onDelete(p.id); }}
+                    className="flex-1 text-xs py-1.5 bg-gray-50 hover:bg-red-50 hover:text-red-600 rounded">삭제</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NewFlowAdder({ onAdd }) {
+  const [val, setVal] = useState('');
+  return (
+    <div className="flex gap-1">
+      <input type="text" value={val} onChange={e => setVal(e.target.value)}
+        onKeyPress={e => e.key === 'Enter' && (onAdd(val), setVal(''))}
+        placeholder="+ 선택 단계 추가 (예: sleeve)" className="input-field text-xs max-w-xs" />
+      <button onClick={() => { onAdd(val); setVal(''); }} className="btn-secondary text-xs">추가</button>
+    </div>
+  );
+}
+
+function TypeManager({ types, onSave, onClose }) {
+  const [localTypes, setLocalTypes] = useState(JSON.parse(JSON.stringify(types)));
+  const [newTypeName, setNewTypeName] = useState('');
+  const [newOptInputs, setNewOptInputs] = useState({});
+
+  const addNewType = () => {
+    if (!newTypeName.trim()) return;
+    const id = 'custom-' + Date.now();
+    setLocalTypes(prev => ({ ...prev, [id]: { id, label: newTypeName.trim(), flow: [], options: {} } }));
+    setNewTypeName('');
+  };
+
+  const removeType = (id) => {
+    if (confirm(`"${localTypes[id]?.label}" 타입을 삭제하시겠습니까?`)) {
+      setLocalTypes(prev => { const copy = { ...prev }; delete copy[id]; return copy; });
+    }
+  };
+
+  const updateTypeLabel = (id, label) => setLocalTypes(prev => ({ ...prev, [id]: { ...prev[id], label } }));
+
+  const addFlowKey = (typeId, key) => {
+    if (!key) return;
+    setLocalTypes(prev => ({
+      ...prev, [typeId]: {
+        ...prev[typeId], flow: [...(prev[typeId].flow || []), key],
+        options: { ...(prev[typeId].options || {}), [key]: [] }
+      }
+    }));
+  };
+
+  const removeFlowKey = (typeId, key) => {
+    setLocalTypes(prev => {
+      const t = { ...prev[typeId] };
+      t.flow = t.flow.filter(k => k !== key);
+      const opts = { ...t.options }; delete opts[key]; t.options = opts;
+      return { ...prev, [typeId]: t };
+    });
+  };
+
+  const addOption = (typeId, flowKey, optInputKey) => {
+    const txt = (newOptInputs[optInputKey] || '').trim();
+    if (!txt) return;
+    const optId = 'opt-' + Date.now();
+    setLocalTypes(prev => ({
+      ...prev, [typeId]: {
+        ...prev[typeId],
+        options: {
+          ...prev[typeId].options,
+          [flowKey]: [...(prev[typeId].options[flowKey] || []), { id: optId, label: txt }]
+        }
+      }
+    }));
+    setNewOptInputs(prev => ({ ...prev, [optInputKey]: '' }));
+  };
+
+  const removeOption = (typeId, flowKey, optId) => {
+    setLocalTypes(prev => ({
+      ...prev, [typeId]: {
+        ...prev[typeId],
+        options: {
+          ...prev[typeId].options,
+          [flowKey]: prev[typeId].options[flowKey].filter(o => o.id !== optId)
+        }
+      }
+    }));
+  };
+
+  const handleSave = () => { onSave(localTypes); onClose(); };
+
+  const handleReset = () => {
+    if (confirm('기본 타입으로 초기화하시겠습니까? 사용자 추가 타입은 삭제됩니다.')) {
+      setLocalTypes(JSON.parse(JSON.stringify(DEFAULT_TYPES)));
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="main-card p-5 flex items-center gap-3">
+        <button onClick={onClose} className="btn-secondary">← 돌아가기</button>
+        <div className="flex-1"></div>
+        <button onClick={handleReset} className="btn-secondary text-xs">🔄 기본값 복원</button>
+        <button onClick={handleSave} className="btn-primary">💾 저장</button>
+      </div>
+
+      <div className="main-card p-5">
+        <div className="text-sm font-semibold mb-3">➕ 새 대분류 추가</div>
+        <div className="flex gap-2">
+          <input type="text" value={newTypeName} onChange={e => setNewTypeName(e.target.value)}
+            onKeyPress={e => e.key === 'Enter' && addNewType()}
+            placeholder="예: 세트, 언더웨어..." className="input-field max-w-xs" />
+          <button onClick={addNewType} className="btn-primary">추가</button>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {Object.values(localTypes).map(t => (
+          <div key={t.id} className="main-card p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <input type="text" value={t.label} onChange={e => updateTypeLabel(t.id, e.target.value)}
+                className="input-field max-w-xs font-semibold" />
+              <button onClick={() => removeType(t.id)}
+                className="text-xs text-red-500 hover:text-red-700">🗑 타입 삭제</button>
+            </div>
+
+            <div className="pl-4 space-y-3 border-l-2 border-gray-100">
+              {t.flow.map(flowKey => (
+                <div key={flowKey} className="bg-gray-50 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs font-semibold">▸ {flowKey}</span>
+                    <button onClick={() => removeFlowKey(t.id, flowKey)}
+                      className="text-xs text-red-400">✕ 제거</button>
+                  </div>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {(t.options[flowKey] || []).map(opt => (
+                      <span key={opt.id} className="badge flex items-center gap-1">
+                        {opt.label}
+                        <button onClick={() => removeOption(t.id, flowKey, opt.id)}
+                          className="text-gray-400 hover:text-red-500">✕</button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex gap-1">
+                    <input type="text" value={newOptInputs[t.id + '_' + flowKey] || ''}
+                      onChange={e => setNewOptInputs(prev => ({ ...prev, [t.id + '_' + flowKey]: e.target.value }))}
+                      onKeyPress={e => e.key === 'Enter' && addOption(t.id, flowKey, t.id + '_' + flowKey)}
+                      placeholder="옵션 이름 (예: 긴소매)" className="input-field text-xs" />
+                    <button onClick={() => addOption(t.id, flowKey, t.id + '_' + flowKey)}
+                      className="btn-secondary text-xs">+</button>
+                  </div>
+                </div>
+              ))}
+
+              <NewFlowAdder onAdd={(key) => addFlowKey(t.id, key)} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProductsMaster() {
+  const [view, setView] = useState('list');
+  const [products, setProducts] = useState(() => storage.get('el_products', []));
+  const [types, setTypes] = useState(() => storage.get('el_types', DEFAULT_TYPES));
+  const [editingProduct, setEditingProduct] = useState(null);
+
+  useEffect(() => {
+    const hasSample = storage.get('el_sample_added', false);
+    if (!hasSample && products.length === 0) {
+      const sample = {
+        id: 'sample-1', name: '글램튜브롱&숏', typeId: 'tshirt',
+        typeSelections: { sleeve: 'sleeveless', neck: 'round' },
+        image: '', colors: ['블랙', '화이트'], sizes: ['S', 'M', 'L'],
+        fabric: { vendor: '충남', name: '소프트핏', yoChuk: 0.35, price: 4500 },
+        materials: [
+          { name: '사이즈라벨', qty: 1, unit: 'ea', price: 300 },
+          { name: '폴리백 35*25', qty: 1, unit: 'ea', price: 76.7 },
+        ],
+        sewing: { vendor: 'OO봉제', price: 3000 },
+        processing: {
+          dyeing: { use: false, vendor: '', price: 0 },
+          tenter: { use: false, vendor: '', price: 0 },
+          transfer: { use: false, vendor: '', price: 0 },
+          printing: { use: false, vendor: '', price: 0 },
+        },
+        createdAt: Date.now(),
+      };
+      setProducts([sample]);
+      storage.set('el_products', [sample]);
+      storage.set('el_sample_added', true);
+    }
+  }, []);
+
+  useEffect(() => { storage.set('el_products', products); }, [products]);
+  useEffect(() => { storage.set('el_types', types); }, [types]);
+
+  const handleSave = (product) => {
+    if (product.id) {
+      setProducts(prev => prev.map(p => p.id === product.id ? product : p));
+    } else {
+      product.id = 'p-' + Date.now();
+      product.createdAt = Date.now();
+      setProducts(prev => [...prev, product]);
+    }
+    setView('list');
+    setEditingProduct(null);
+  };
+
+  const handleDelete = (id) => {
+    if (confirm('이 상품을 삭제하시겠습니까?')) {
+      setProducts(prev => prev.filter(p => p.id !== id));
+    }
+  };
+
+  const handleEdit = (product) => { setEditingProduct(product); setView('form'); };
+  const handleNew = () => { setEditingProduct(null); setView('form'); };
+
+  if (view === 'form') {
+    return <ProductForm product={editingProduct} types={types}
+      onSave={handleSave} onCancel={() => { setView('list'); setEditingProduct(null); }} />;
+  }
+
+  if (view === 'typeManager') {
+    return <TypeManager types={types} onSave={setTypes} onClose={() => setView('list')} />;
+  }
+
+  return <ProductList products={products} types={types}
+    onNew={handleNew} onEdit={handleEdit} onDelete={handleDelete}
+    onOpenTypeManager={() => setView('typeManager')} />;
+}
+
+function Placeholder({ tabMeta }) {
+  return (
+    <div className="placeholder-box">
+      <div className="text-5xl mb-4 opacity-40">{tabMeta.icon}</div>
+      <div className="text-lg font-medium text-gray-700 mb-2">
+        {tabMeta.number && <span className="text-gray-400 mr-2">{tabMeta.number}</span>}
+        {tabMeta.label}
+      </div>
+      <div className="text-sm text-gray-500">이 영역은 곧 구현됩니다</div>
+    </div>
+  );
+}
+
+function Dashboard() {
+  return (
+    <div className="space-y-6">
+      <div className="main-card p-8">
+        <div className="flex items-center gap-3 mb-2">
+          <span className="text-3xl">👋</span>
+          <h2 className="text-2xl font-semibold text-gray-900">환영합니다</h2>
+        </div>
+        <p className="text-gray-500">이엘컴퍼니 통합관리 시스템입니다.</p>
+      </div>
+
+      <div className="main-card p-6">
+        <div className="text-sm font-semibold text-gray-700 mb-4">시작 가이드</div>
+        <div className="space-y-3 text-sm text-gray-600">
+          <div className="flex gap-3">
+            <span className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs font-semibold">1</span>
+            <div>
+              <span className="font-medium text-gray-900">상품 등록 (1-1 상품마스터)</span>
+              <p className="text-gray-500 mt-0.5">타입을 선택하고 마인드맵에 원단·부자재·봉제·가공 정보를 입력하세요</p>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <span className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs font-semibold">2</span>
+            <div>
+              <span className="font-medium text-gray-900">타입 관리 (필요 시)</span>
+              <p className="text-gray-500 mt-0.5">상품마스터 안 '타입 관리' 버튼으로 세부 분류를 추가·수정·삭제할 수 있습니다</p>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <span className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs font-semibold">3</span>
+            <div>
+              <span className="font-medium text-gray-900">거래처 자동 취합 (예정)</span>
+              <p className="text-gray-500 mt-0.5">상품 등록 시 입력한 업체들이 3번 거래처관리에 자동으로 집계됩니다</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [active, setActive] = useState('dashboard');
+  const tabMeta = getTabMeta(active);
+
+  const renderContent = () => {
+    if (active === 'dashboard') return <Dashboard />;
+    if (active === 'products-master') return <ProductsMaster />;
+    return <Placeholder tabMeta={tabMeta} />;
+  };
+
+  return (
+    <div className="flex min-h-screen">
+      <Sidebar active={active} setActive={setActive} />
+      <main className="flex-1 flex flex-col">
+        <Header tabMeta={tabMeta} />
+        <div className="p-8 flex-1">{renderContent()}</div>
+      </main>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
