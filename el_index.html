@@ -367,7 +367,7 @@ function Sidebar({ active, setActive }) {
   const handleExport = () => {
     try {
       const data = {
-        version: 'v20260425.07',
+        version: 'v20260425.08',
         exportedAt: new Date().toISOString(),
         products: storage.get('el_products', []),
         types: storage.get('el_types', DEFAULT_TYPES),
@@ -485,7 +485,7 @@ function Sidebar({ active, setActive }) {
       </nav>
 
       <div className="px-6 py-3 border-t border-gray-100">
-        <div className="version-badge">v20260425.07</div>
+        <div className="version-badge">v20260425.08</div>
       </div>
     </aside>
     {showCompanyModal && <CompanyInfoModal onClose={() => setShowCompanyModal(false)} />}
@@ -814,21 +814,23 @@ ${itemDesc}
         break;
       case 'pdf':
         // 간단한 PDF 출력 (새 창 + 인쇄)
+        const cleanText = text.split('\u{1F534}').join('').split('\u2501').join('');
         const win = window.open('', '_blank');
-        win.document.write(`
-          <!DOCTYPE html><html><head><meta charset="utf-8"><title>${subject}</title>
-          <style>body{font-family:'맑은 고딕','Noto Sans KR',sans-serif;padding:40px;line-height:1.6;}
-          pre{white-space:pre-wrap;font-family:inherit;font-size:13px;}
-          .header{text-align:center;margin-bottom:30px;border-bottom:2px solid #333;padding-bottom:20px;}
-          .header h1{margin:0;font-size:24px;}
-          .shipto{background:#ffe6e6;border:2px solid #ff3b30;padding:12px;border-radius:8px;margin:20px 0;}
-          @media print{body{padding:20px;}}</style>
-          </head><body>
-          <div class="header"><h1>${type === 'fabric' ? '원단' : '부자재'} 발주서</h1><div>${orderNo}</div></div>
-          <pre>${text.replace(/🔴/g, '').replace(/━/g, '')}</pre>
-          <script>window.print();</script>
-          </body></html>
-        `);
+        const pdfTitle = (type === 'fabric' ? '원단' : '부자재') + ' 발주서';
+        const htmlParts = [
+          '<!DOCTYPE html><html><head><meta charset="utf-8"><title>',
+          subject,
+          '</title><style>body{font-family:"맑은 고딕","Noto Sans KR",sans-serif;padding:40px;line-height:1.6;}',
+          'pre{white-space:pre-wrap;font-family:inherit;font-size:13px;}',
+          '.header{text-align:center;margin-bottom:30px;border-bottom:2px solid #333;padding-bottom:20px;}',
+          '.header h1{margin:0;font-size:24px;}',
+          '@media print{body{padding:20px;}}</style></head><body>',
+          '<div class="header"><h1>', pdfTitle, '</h1><div>', orderNo, '</div></div>',
+          '<pre>', cleanText.replace(/</g, '&lt;').replace(/>/g, '&gt;'), '</pre>',
+          '<scr' + 'ipt>window.print();</scr' + 'ipt>',
+          '</body></html>'
+        ];
+        win.document.write(htmlParts.join(''));
         win.document.close();
         break;
     }
