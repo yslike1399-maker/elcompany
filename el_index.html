@@ -86,6 +86,9 @@
   .color-row-display { display: grid; grid-template-columns: 1fr auto; gap: 4px; align-items: center; margin-bottom: 4px; padding: 6px 8px; background: white; border: 1px solid var(--border); border-radius: 6px; }
 
   .section-label { font-size: 0.625rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+
+  .modal-backdrop { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
+  .modal-body { background: white; border-radius: 16px; max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
 </style>
 </head>
 <body>
@@ -351,17 +354,99 @@ function AutocompleteInput({ value, onChange, onSelect, suggestions, placeholder
 // ═══════════════════════════════════════════════════════════
 function Sidebar({ active, setActive }) {
   const [openGroups, setOpenGroups] = useState({ products: true });
+  const [showCompanyModal, setShowCompanyModal] = useState(false);
+  const fileInputRef = useRef(null);
+
   const toggleGroup = (id) => setOpenGroups(prev => ({ ...prev, [id]: !prev[id] }));
   const handleMenuClick = (menu) => {
     if (menu.type === 'single') setActive(menu.id);
     else toggleGroup(menu.id);
   };
 
+  // 내보내기
+  const handleExport = () => {
+    try {
+      const data = {
+        version: 'v20260425.07',
+        exportedAt: new Date().toISOString(),
+        products: storage.get('el_products', []),
+        types: storage.get('el_types', DEFAULT_TYPES),
+        vendors: storage.get('el_vendors', []),
+        companyInfo: storage.get('el_company_info', {}),
+        orders: storage.get('el_orders', []),
+      };
+      const json = JSON.stringify(data, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      const fname = `elcompany-backup-${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}.json`;
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fname;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      alert(`✅ 내보내기 완료\n\n파일명: ${fname}\n상품: ${data.products.length}개\n거래처: ${data.vendors.length}개\n발주이력: ${data.orders.length}개`);
+    } catch (err) {
+      alert('❌ 내보내기 실패: ' + err.message);
+    }
+  };
+
+  // 가져오기
+  const handleImport = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!confirm('⚠️ 가져오기를 진행하면 현재 데이터가 모두 덮어쓰기 됩니다.\n\n계속하시겠습니까?')) {
+      e.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!data.products || !data.types || !data.vendors) {
+          throw new Error('올바른 백업 파일이 아닙니다');
+        }
+        storage.set('el_products', data.products);
+        storage.set('el_types', data.types);
+        storage.set('el_vendors', data.vendors);
+        if (data.companyInfo) storage.set('el_company_info', data.companyInfo);
+        if (data.orders) storage.set('el_orders', data.orders);
+        alert(`✅ 가져오기 완료\n\n상품: ${data.products.length}개\n거래처: ${data.vendors.length}개\n\n페이지를 새로고침합니다.`);
+        window.location.reload();
+      } catch (err) {
+        alert('❌ 가져오기 실패: ' + err.message);
+      }
+      e.target.value = '';
+    };
+    reader.readAsText(file);
+  };
+
   return (
+    <>
     <aside className="w-64 bg-white border-r border-gray-200 flex flex-col h-screen sticky top-0">
       <div className="px-6 py-7 border-b border-gray-100">
         <div className="logo-main text-xl text-gray-900">ELCOMPANY</div>
         <div className="text-xs text-gray-500 mt-1 font-light">이엘컴퍼니 통합관리</div>
+        <button onClick={() => setShowCompanyModal(true)}
+          className="w-full mt-3 text-xs py-1.5 px-2 bg-gray-50 hover:bg-gray-100 rounded-md text-gray-600 transition border border-gray-100">
+          🏢 사업자정보
+        </button>
+        <div className="flex gap-1 mt-2">
+          <button onClick={handleExport}
+            className="flex-1 text-xs py-1.5 px-2 bg-gray-50 hover:bg-gray-100 rounded-md text-gray-600 transition"
+            title="데이터 내보내기 (백업)">
+            📤 내보내기
+          </button>
+          <button onClick={() => fileInputRef.current?.click()}
+            className="flex-1 text-xs py-1.5 px-2 bg-gray-50 hover:bg-gray-100 rounded-md text-gray-600 transition"
+            title="데이터 가져오기 (복원)">
+            📥 가져오기
+          </button>
+          <input ref={fileInputRef} type="file" accept=".json" onChange={handleImport} className="hidden" />
+        </div>
       </div>
 
       <nav className="flex-1 overflow-y-auto py-3">
@@ -400,9 +485,95 @@ function Sidebar({ active, setActive }) {
       </nav>
 
       <div className="px-6 py-3 border-t border-gray-100">
-        <div className="version-badge">v20260425.04</div>
+        <div className="version-badge">v20260425.07</div>
       </div>
     </aside>
+    {showCompanyModal && <CompanyInfoModal onClose={() => setShowCompanyModal(false)} />}
+    </>
+  );
+}
+
+function CompanyInfoModal({ onClose }) {
+  const [info, setInfo] = useState(() => storage.get('el_company_info', {
+    name: '이엘컴퍼니',
+    representative: '',
+    bizNo: '',
+    phone: '',
+    fax: '',
+    email: '',
+    addr: '',
+  }));
+
+  const handleSave = () => {
+    storage.set('el_company_info', info);
+    alert('✅ 사업자정보가 저장되었습니다.');
+    onClose();
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-body" onClick={e => e.stopPropagation()}>
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">🏢 사업자정보</h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+          </div>
+          <div className="text-xs text-gray-500 mb-4">
+            발주서에 자동으로 들어갈 이엘컴퍼니 정보를 입력하세요
+          </div>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">상호</label>
+              <input type="text" value={info.name}
+                onChange={e => setInfo({...info, name: e.target.value})}
+                className="input-field" placeholder="이엘컴퍼니" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">대표자</label>
+              <input type="text" value={info.representative}
+                onChange={e => setInfo({...info, representative: e.target.value})}
+                className="input-field" placeholder="홍길동" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">사업자번호</label>
+              <input type="text" value={info.bizNo}
+                onChange={e => setInfo({...info, bizNo: e.target.value})}
+                className="input-field" placeholder="123-45-67890" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">주소</label>
+              <input type="text" value={info.addr}
+                onChange={e => setInfo({...info, addr: e.target.value})}
+                className="input-field" placeholder="서울시 ..." />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">전화번호</label>
+                <input type="text" value={info.phone}
+                  onChange={e => setInfo({...info, phone: e.target.value})}
+                  className="input-field" placeholder="02-123-4567" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">팩스</label>
+                <input type="text" value={info.fax}
+                  onChange={e => setInfo({...info, fax: e.target.value})}
+                  className="input-field" placeholder="(선택)" />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">이메일</label>
+              <input type="email" value={info.email}
+                onChange={e => setInfo({...info, email: e.target.value})}
+                className="input-field" placeholder="(선택)" />
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end mt-5">
+            <button onClick={onClose} className="btn-secondary">취소</button>
+            <button onClick={handleSave} className="btn-primary">💾 저장</button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -450,6 +621,443 @@ function Toast({ messages, onClose }) {
       {messages.map((m, i) => (
         <div key={i} className="text-xs text-gray-600">• {m}</div>
       ))}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// 신속주문 팝업
+// ═══════════════════════════════════════════════════════════
+function QuickOrderModal({ product, types, onClose, onSaveOrder }) {
+  const companyInfo = storage.get('el_company_info', {});
+  const colors = Object.keys(product.elColors || {});
+  const sizes = product.sizes || [];
+  
+  const [quantities, setQuantities] = useState(() => {
+    const q = {};
+    colors.forEach(origColor => {
+      sizes.forEach(size => {
+        q[`${origColor}_${size}`] = 0;
+      });
+    });
+    return q;
+  });
+
+  const [dueDate, setDueDate] = useState('');
+  const [activeTab, setActiveTab] = useState('fabric'); // fabric, material, instruction
+  const [fabricShipTo, setFabricShipTo] = useState({
+    name: product.sewing?.vendorName || '',
+    phone: product.sewing?.vendorPhone || '',
+    addr: product.sewing?.vendorAddr || '',
+  });
+  const [materialShipTo, setMaterialShipTo] = useState({
+    name: product.sewing?.vendorName || '',
+    phone: product.sewing?.vendorPhone || '',
+    addr: product.sewing?.vendorAddr || '',
+  });
+
+  const updateQty = (color, size, val) => {
+    setQuantities(prev => ({ ...prev, [`${color}_${size}`]: parseInt(val) || 0 }));
+  };
+
+  // 총 주문 수량 계산
+  const totalQty = Object.values(quantities).reduce((s, q) => s + q, 0);
+
+  // 색상별 총 수량
+  const colorTotals = useMemo(() => {
+    const t = {};
+    colors.forEach(c => {
+      t[c] = sizes.reduce((s, sz) => s + (quantities[`${c}_${sz}`] || 0), 0);
+    });
+    return t;
+  }, [quantities, colors, sizes]);
+
+  // 자동 계산
+  const fabricNeeded = (product.fabric?.yoChuk || 0) * totalQty;
+  const fabricCost = fabricNeeded * (product.fabric?.price || 0);
+  
+  const materialsNeeded = (product.materials || []).map(m => ({
+    ...m,
+    totalQty: (m.qty || 0) * totalQty,
+    totalCost: (m.qty || 0) * totalQty * (m.price || 0),
+  }));
+
+  const sewingCost = (product.sewing?.price || 0) * totalQty;
+  const totalCost = fabricCost + materialsNeeded.reduce((s, m) => s + m.totalCost, 0) + sewingCost;
+
+  // 발주번호 생성
+  const generateOrderNo = (prefix) => {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const dateStr = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}`;
+    const seq = Math.floor(Math.random() * 900 + 100);
+    return `EL-${dateStr}-${prefix}-${seq}`;
+  };
+
+  // 사업자정보 체크
+  const hasCompanyInfo = companyInfo.name && (companyInfo.addr || companyInfo.phone);
+
+  // 발주서 텍스트 생성
+  const generateOrderText = (type) => {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+    const orderNo = generateOrderNo(type === 'fabric' ? 'F' : 'M');
+    
+    let toVendor, shipTo, itemDesc;
+    
+    if (type === 'fabric') {
+      toVendor = {
+        name: product.fabric?.vendorName || '',
+        phone: product.fabric?.vendorPhone || '',
+        addr: product.fabric?.vendorAddr || '',
+        bizNo: product.fabric?.vendorBizNo || '',
+      };
+      shipTo = fabricShipTo;
+      const colorStr = colors.map(c => `${product.elColors[c]}(${c})`).join(', ');
+      itemDesc = `▪ 품목: ${product.name}
+▪ 원단명: ${product.fabric?.name || '-'}
+▪ 색상: ${colorStr}
+▪ 수량: ${fabricNeeded.toFixed(2)} ${product.fabric?.unit || 'yds'}
+▪ 단가: ₩${(product.fabric?.price || 0).toLocaleString()}/${product.fabric?.unit || 'yds'}
+▪ 금액: ₩${Math.round(fabricCost).toLocaleString()}`;
+    } else {
+      // 부자재 (여러 개 통합)
+      toVendor = null; // 부자재는 여러 거래처 가능 → 부자재별로 처리
+      shipTo = materialShipTo;
+      itemDesc = materialsNeeded.map(m => 
+`▪ 부자재명: ${m.name}
+  종류: ${m.kind || '-'}
+  거래처: ${m.vendorName || '-'}
+  수량: ${m.totalQty.toFixed(2)} ${m.unit}
+  단가: ₩${(m.price || 0).toLocaleString()}/${m.unit}
+  금액: ₩${Math.round(m.totalCost).toLocaleString()}`
+      ).join('\n\n');
+    }
+
+    let text = `[${type === 'fabric' ? '원단' : '부자재'} 발주서]
+발주번호: ${orderNo}
+
+┌─ 발주처 ─────────────────┐
+상호: ${companyInfo.name || '-'}
+${companyInfo.representative ? '대표: ' + companyInfo.representative + '\n' : ''}주소: ${companyInfo.addr || '-'}
+전화: ${companyInfo.phone || '-'}
+사업자번호: ${companyInfo.bizNo || '-'}
+└──────────────────────────┘
+
+발주일: ${dateStr}
+${dueDate ? '납기: ' + dueDate + '\n' : ''}`;
+
+    if (type === 'fabric' && toVendor) {
+      text += `
+받는곳: ${toVendor.name}
+  ${toVendor.addr ? '주소: ' + toVendor.addr : ''}
+  ${toVendor.phone ? '전화: ' + toVendor.phone : ''}
+`;
+    }
+
+    text += `
+🔴━━━━━━━━━━━━━━━━━━━━━━━━🔴
+  입고처 (작업장)
+  상호: ${shipTo.name || '-'}
+  주소: ${shipTo.addr || '-'}
+  전화: ${shipTo.phone || '-'}
+🔴━━━━━━━━━━━━━━━━━━━━━━━━🔴
+
+${itemDesc}
+
+─────────────────────────
+총 주문 수량: ${totalQty}장
+─────────────────────────
+
+확인 부탁드립니다.
+- ${companyInfo.name || '이엘컴퍼니'}
+`;
+    return { text, orderNo };
+  };
+
+  // 발송 방법
+  const handleSendOrder = async (type, method) => {
+    if (!hasCompanyInfo) {
+      alert('⚠️ 먼저 사이드바의 [사업자정보]를 입력해주세요.');
+      return;
+    }
+
+    const { text, orderNo } = generateOrderText(type);
+    const subject = `[${companyInfo.name || '이엘컴퍼니'}] ${type === 'fabric' ? '원단' : '부자재'} 발주서 - ${orderNo}`;
+
+    switch (method) {
+      case 'copy':
+        try {
+          await navigator.clipboard.writeText(text);
+          alert('📋 클립보드에 복사되었습니다!');
+        } catch {
+          alert('❌ 복사 실패. 브라우저 권한을 확인해주세요.');
+        }
+        break;
+      case 'sms':
+        window.location.href = `sms:?body=${encodeURIComponent(text)}`;
+        break;
+      case 'email':
+        window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}`;
+        break;
+      case 'share':
+        if (navigator.share) {
+          try {
+            await navigator.share({ title: subject, text });
+          } catch (err) {
+            if (err.name !== 'AbortError') alert('공유 실패: ' + err.message);
+          }
+        } else {
+          alert('이 브라우저는 공유 기능을 지원하지 않습니다. 복사를 이용해주세요.');
+        }
+        break;
+      case 'pdf':
+        // 간단한 PDF 출력 (새 창 + 인쇄)
+        const win = window.open('', '_blank');
+        win.document.write(`
+          <!DOCTYPE html><html><head><meta charset="utf-8"><title>${subject}</title>
+          <style>body{font-family:'맑은 고딕','Noto Sans KR',sans-serif;padding:40px;line-height:1.6;}
+          pre{white-space:pre-wrap;font-family:inherit;font-size:13px;}
+          .header{text-align:center;margin-bottom:30px;border-bottom:2px solid #333;padding-bottom:20px;}
+          .header h1{margin:0;font-size:24px;}
+          .shipto{background:#ffe6e6;border:2px solid #ff3b30;padding:12px;border-radius:8px;margin:20px 0;}
+          @media print{body{padding:20px;}}</style>
+          </head><body>
+          <div class="header"><h1>${type === 'fabric' ? '원단' : '부자재'} 발주서</h1><div>${orderNo}</div></div>
+          <pre>${text.replace(/🔴/g, '').replace(/━/g, '')}</pre>
+          <script>window.print();</script>
+          </body></html>
+        `);
+        win.document.close();
+        break;
+    }
+
+    // 이력 저장
+    const orders = storage.get('el_orders', []);
+    orders.push({
+      id: orderNo,
+      orderNo,
+      type, // fabric / material
+      productId: product.id,
+      productName: product.name,
+      totalQty,
+      totalCost: type === 'fabric' ? fabricCost : materialsNeeded.reduce((s, m) => s + m.totalCost, 0),
+      quantities: { ...quantities },
+      method,
+      text,
+      shipTo: type === 'fabric' ? fabricShipTo : materialShipTo,
+      createdAt: Date.now(),
+    });
+    storage.set('el_orders', orders);
+  };
+
+  if (colors.length === 0 || sizes.length === 0) {
+    return (
+      <div className="modal-backdrop" onClick={onClose}>
+        <div className="modal-body" onClick={e => e.stopPropagation()}>
+          <div className="p-6 text-center">
+            <div className="text-5xl mb-3">⚠️</div>
+            <div className="text-lg font-semibold mb-2">신속주문 불가</div>
+            <div className="text-sm text-gray-600 mb-4">
+              이 상품은 색상 또는 사이즈가 등록되지 않았습니다.<br/>
+              상품 수정에서 먼저 등록해주세요.
+            </div>
+            <button onClick={onClose} className="btn-primary">닫기</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-body" onClick={e => e.stopPropagation()} style={{maxWidth: '700px'}}>
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">⚡ 신속주문 - {product.name}</h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+          </div>
+
+          {!hasCompanyInfo && (
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4 text-xs text-orange-800">
+              ⚠️ 발주서 생성 전 사이드바의 <strong>[🏢 사업자정보]</strong>를 먼저 입력해주세요.
+            </div>
+          )}
+
+          {/* 색상×사이즈 매트릭스 */}
+          <div className="mb-4">
+            <div className="text-xs font-semibold text-gray-700 mb-2">색상별 수량 입력</div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-2 px-2 text-xs text-gray-500">색상</th>
+                    {sizes.map(s => (
+                      <th key={s} className="py-2 px-1 text-xs text-gray-500 w-16">{s}</th>
+                    ))}
+                    <th className="py-2 px-2 text-xs text-gray-500">합계</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {colors.map(c => (
+                    <tr key={c} className="border-b border-gray-100">
+                      <td className="py-2 px-2 text-xs">
+                        <div className="font-medium">{product.elColors[c]}</div>
+                        <div className="text-gray-400 text-[10px]">({c})</div>
+                      </td>
+                      {sizes.map(s => (
+                        <td key={s} className="py-1 px-1">
+                          <input type="number" min="0"
+                            value={quantities[`${c}_${s}`] || ''}
+                            onChange={e => updateQty(c, s, e.target.value)}
+                            className="input-field-sm text-center w-full" />
+                        </td>
+                      ))}
+                      <td className="py-2 px-2 text-xs font-semibold text-center">{colorTotals[c]}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-gray-50">
+                    <td className="py-2 px-2 text-xs font-semibold">합계</td>
+                    <td colSpan={sizes.length} className="text-right pr-3 text-xs"></td>
+                    <td className="py-2 px-2 text-sm font-bold text-center">{totalQty}장</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+          {/* 납기 */}
+          <div className="mb-4">
+            <label className="text-xs font-medium text-gray-600 block mb-1">납기 (선택)</label>
+            <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}
+              className="input-field max-w-xs" />
+          </div>
+
+          {/* 자동 계산 */}
+          {totalQty > 0 && (
+            <div className="bg-gray-50 rounded-xl p-4 mb-4">
+              <div className="text-xs font-semibold text-gray-700 mb-2">📦 필요 자재 자동 계산</div>
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span>🧵 원단 ({product.fabric?.name || '-'})</span>
+                  <span className="font-semibold">{fabricNeeded.toFixed(2)} {product.fabric?.unit || 'yds'} · ₩{Math.round(fabricCost).toLocaleString()}</span>
+                </div>
+                {materialsNeeded.map((m, i) => (
+                  <div key={i} className="flex justify-between">
+                    <span>🔧 {m.name || '(이름없음)'}</span>
+                    <span className="font-semibold">{m.totalQty.toFixed(2)} {m.unit} · ₩{Math.round(m.totalCost).toLocaleString()}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between">
+                  <span>🏭 봉제 공임</span>
+                  <span className="font-semibold">{totalQty}장 · ₩{Math.round(sewingCost).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between border-t pt-2 mt-2">
+                  <span className="font-semibold">💰 총 비용</span>
+                  <span className="font-bold text-base">₩{Math.round(totalCost).toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 탭 */}
+          <div className="flex gap-1 mb-3 border-b">
+            <button onClick={() => setActiveTab('fabric')}
+              className={`px-3 py-2 text-xs font-medium ${activeTab === 'fabric' ? 'text-gray-900 border-b-2 border-gray-900' : 'text-gray-500'}`}>
+              📤 원단 발주서
+            </button>
+            <button onClick={() => setActiveTab('material')}
+              className={`px-3 py-2 text-xs font-medium ${activeTab === 'material' ? 'text-gray-900 border-b-2 border-gray-900' : 'text-gray-500'}`}>
+              📤 부자재 발주서
+            </button>
+            <button disabled
+              className="px-3 py-2 text-xs font-medium text-gray-300 cursor-not-allowed">
+              📋 작업지시서 (추후 제공)
+            </button>
+          </div>
+
+          {/* 탭 내용 */}
+          <div className="mb-4">
+            {activeTab === 'fabric' && (
+              <div className="space-y-3">
+                <div className="text-xs text-gray-600">발주처: <strong>{product.fabric?.vendorName || '(미설정)'}</strong></div>
+                <div className="bg-red-50 border-2 border-red-300 rounded-lg p-3">
+                  <div className="text-xs font-semibold text-red-700 mb-2">🔴 입고처 정보 (수정 가능)</div>
+                  <div className="space-y-1">
+                    <input type="text" placeholder="상호" value={fabricShipTo.name}
+                      onChange={e => setFabricShipTo({...fabricShipTo, name: e.target.value})}
+                      className="input-field-sm" />
+                    <input type="text" placeholder="주소" value={fabricShipTo.addr}
+                      onChange={e => setFabricShipTo({...fabricShipTo, addr: e.target.value})}
+                      className="input-field-sm" />
+                    <input type="text" placeholder="전화번호" value={fabricShipTo.phone}
+                      onChange={e => setFabricShipTo({...fabricShipTo, phone: e.target.value})}
+                      className="input-field-sm" />
+                  </div>
+                </div>
+              </div>
+            )}
+            {activeTab === 'material' && (
+              <div className="space-y-3">
+                <div className="text-xs text-gray-600">부자재 {materialsNeeded.length}개 포함</div>
+                <div className="bg-red-50 border-2 border-red-300 rounded-lg p-3">
+                  <div className="text-xs font-semibold text-red-700 mb-2">🔴 입고처 정보 (수정 가능)</div>
+                  <div className="space-y-1">
+                    <input type="text" placeholder="상호" value={materialShipTo.name}
+                      onChange={e => setMaterialShipTo({...materialShipTo, name: e.target.value})}
+                      className="input-field-sm" />
+                    <input type="text" placeholder="주소" value={materialShipTo.addr}
+                      onChange={e => setMaterialShipTo({...materialShipTo, addr: e.target.value})}
+                      className="input-field-sm" />
+                    <input type="text" placeholder="전화번호" value={materialShipTo.phone}
+                      onChange={e => setMaterialShipTo({...materialShipTo, phone: e.target.value})}
+                      className="input-field-sm" />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 발송 버튼 5가지 */}
+          <div className="border-t pt-4">
+            <div className="text-xs font-semibold text-gray-700 mb-2">📤 발송 방법 선택</div>
+            <div className="grid grid-cols-5 gap-2">
+              <button onClick={() => handleSendOrder(activeTab, 'copy')}
+                disabled={totalQty === 0}
+                className="btn-secondary text-xs py-2 disabled:opacity-30">
+                📋<br/>복사
+              </button>
+              <button onClick={() => handleSendOrder(activeTab, 'sms')}
+                disabled={totalQty === 0}
+                className="btn-secondary text-xs py-2 disabled:opacity-30">
+                📱<br/>문자
+              </button>
+              <button onClick={() => handleSendOrder(activeTab, 'email')}
+                disabled={totalQty === 0}
+                className="btn-secondary text-xs py-2 disabled:opacity-30">
+                📧<br/>메일
+              </button>
+              <button onClick={() => handleSendOrder(activeTab, 'share')}
+                disabled={totalQty === 0}
+                className="btn-secondary text-xs py-2 disabled:opacity-30">
+                💬<br/>공유
+              </button>
+              <button onClick={() => handleSendOrder(activeTab, 'pdf')}
+                disabled={totalQty === 0}
+                className="btn-secondary text-xs py-2 disabled:opacity-30">
+                📄<br/>PDF
+              </button>
+            </div>
+          </div>
+
+          <div className="flex gap-2 justify-end mt-5">
+            <button onClick={onClose} className="btn-secondary">닫기</button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -503,14 +1111,16 @@ function ProductForm({ product, types, vendors, materialKinds, onSave, onCancel 
   // ─── 원단 관련 ───
   const setFabricField = (field, val) => setForm(prev => ({ ...prev, fabric: { ...prev.fabric, [field]: val } }));
   
-  const handleFabricVendorSelect = (vendor) => {
+  const handleFabricVendorSelect = (v) => {
     setForm(prev => ({ ...prev, fabric: {
       ...prev.fabric,
-      vendorName: vendor.name,
-      vendorPhone: vendor.phone || '',
-      vendorAddr: vendor.addr || '',
-      vendorBizNo: vendor.bizNo || '',
-      name: vendor.fabricName || prev.fabric.name,
+      vendorName: v.name,
+      vendorPhone: v.phone || '',
+      vendorAddr: v.addr || '',
+      vendorBizNo: v.bizNo || '',
+      name: v.itemName || prev.fabric.name,
+      price: v.itemPrice || prev.fabric.price,
+      unit: v.itemUnit || prev.fabric.unit || 'yds',
     } }));
   };
 
@@ -547,11 +1157,16 @@ function ProductForm({ product, types, vendors, materialKinds, onSave, onCancel 
     materials: prev.materials.map((m, i) => i === idx ? { ...m, [field]: val } : m)
   }));
 
-  const handleMaterialVendorSelect = (idx, vendor) => {
-    updateMaterial(idx, 'vendorName', vendor.name);
-    updateMaterial(idx, 'vendorPhone', vendor.phone || '');
-    updateMaterial(idx, 'vendorAddr', vendor.addr || '');
-    updateMaterial(idx, 'vendorBizNo', vendor.bizNo || '');
+  const handleMaterialVendorSelect = (idx, v) => {
+    updateMaterial(idx, 'vendorName', v.name);
+    updateMaterial(idx, 'vendorPhone', v.phone || '');
+    updateMaterial(idx, 'vendorAddr', v.addr || '');
+    updateMaterial(idx, 'vendorBizNo', v.bizNo || '');
+    if (v.itemName) {
+      updateMaterial(idx, 'name', v.itemName);
+      updateMaterial(idx, 'price', v.itemPrice || 0);
+      updateMaterial(idx, 'unit', v.itemUnit || 'ea');
+    }
   };
 
   const removeMaterial = (idx) => setForm(prev => ({ ...prev, materials: prev.materials.filter((_, i) => i !== idx) }));
@@ -559,13 +1174,14 @@ function ProductForm({ product, types, vendors, materialKinds, onSave, onCancel 
   // ─── 봉제 관련 ───
   const setSewingField = (field, val) => setForm(prev => ({ ...prev, sewing: { ...prev.sewing, [field]: val } }));
   
-  const handleSewingVendorSelect = (vendor) => {
+  const handleSewingVendorSelect = (v) => {
     setForm(prev => ({ ...prev, sewing: {
       ...prev.sewing,
-      vendorName: vendor.name,
-      vendorPhone: vendor.phone || '',
-      vendorAddr: vendor.addr || '',
-      vendorBizNo: vendor.bizNo || '',
+      vendorName: v.name,
+      vendorPhone: v.phone || '',
+      vendorAddr: v.addr || '',
+      vendorBizNo: v.bizNo || '',
+      price: v.itemPrice || prev.sewing.price,
     } }));
   };
 
@@ -575,15 +1191,16 @@ function ProductForm({ product, types, vendors, materialKinds, onSave, onCancel 
     processing: { ...prev.processing, [key]: { ...prev.processing[key], [field]: val } }
   }));
 
-  const handleProcVendorSelect = (key, vendor) => {
+  const handleProcVendorSelect = (key, v) => {
     setForm(prev => ({
       ...prev,
       processing: { ...prev.processing, [key]: {
         ...prev.processing[key],
-        vendorName: vendor.name,
-        vendorPhone: vendor.phone || '',
-        vendorAddr: vendor.addr || '',
-        vendorBizNo: vendor.bizNo || '',
+        vendorName: v.name,
+        vendorPhone: v.phone || '',
+        vendorAddr: v.addr || '',
+        vendorBizNo: v.bizNo || '',
+        price: v.itemPrice || prev.processing[key].price,
       } }
     }));
   };
@@ -598,19 +1215,42 @@ function ProductForm({ product, types, vendors, materialKinds, onSave, onCancel 
     setForm(prev => ({ ...prev, elColors: { ...prev.elColors, [originalColor]: elColor } }));
   };
 
-  // 자동완성용 vendor 필터
-  const fabricVendors = useMemo(() => vendors.filter(v => v.category === 'fabric'), [vendors]);
-  const materialVendors = useMemo(() => vendors.filter(v => v.category === 'material'), [vendors]);
-  const sewingVendors = useMemo(() => vendors.filter(v => v.category === 'sewing'), [vendors]);
+  // 자동완성용 vendor+item 조합 생성
+  const buildVendorItemList = (category) => {
+    const list = [];
+    vendors.filter(v => v.category === category).forEach(v => {
+      if (Array.isArray(v.items) && v.items.length > 0) {
+        v.items.forEach(item => {
+          list.push({
+            ...v,
+            itemName: item.name,
+            itemPrice: item.price,
+            itemUnit: item.unit,
+            _key: v.id + '_' + item.id,
+          });
+        });
+      } else {
+        // items가 없으면 vendor 정보만
+        list.push({ ...v, itemName: '', itemPrice: 0, itemUnit: '', _key: v.id });
+      }
+    });
+    return list;
+  };
+
+  const fabricVendors = useMemo(() => buildVendorItemList('fabric'), [vendors]);
+  const materialVendors = useMemo(() => buildVendorItemList('material'), [vendors]);
+  const sewingVendors = useMemo(() => buildVendorItemList('sewing'), [vendors]);
   const procVendors = {
-    dyeing: useMemo(() => vendors.filter(v => v.category === 'dyeing'), [vendors]),
-    tenter: useMemo(() => vendors.filter(v => v.category === 'tenter'), [vendors]),
-    transfer: useMemo(() => vendors.filter(v => v.category === 'transfer'), [vendors]),
-    printing: useMemo(() => vendors.filter(v => v.category === 'printing'), [vendors]),
+    dyeing: useMemo(() => buildVendorItemList('dyeing'), [vendors]),
+    tenter: useMemo(() => buildVendorItemList('tenter'), [vendors]),
+    transfer: useMemo(() => buildVendorItemList('transfer'), [vendors]),
+    printing: useMemo(() => buildVendorItemList('printing'), [vendors]),
   };
 
   const canSave = form.name.trim() && form.typeId;
   const fabricColors = form.fabric?.colors?.filter(c => c && c.trim()) || [];
+  const [showQuickOrder, setShowQuickOrder] = useState(false);
+  const isExistingProduct = !!product?.id;
 
   const PROC_LABELS = { dyeing: '염색', tenter: '텐타', transfer: '전사', printing: '나염' };
   const PROC_UNITS = { dyeing: 'kg', tenter: 'yds', transfer: '판/도수', printing: '판/도수' };
@@ -670,8 +1310,8 @@ function ProductForm({ product, types, vendors, materialKinds, onSave, onCancel 
                 onSelect={handleFabricVendorSelect}
                 suggestions={fabricVendors}
                 placeholder="업체명"
-                getLabel={(v) => v.fabricName ? `${v.name} (${v.fabricName})` : v.name}
-                getKey={(v) => v.id}
+                getLabel={(v) => v.itemName ? `${v.name} (${v.itemName})` : v.name}
+                getKey={(v) => v._key || v.id}
                 className="input-field-sm"
               />
               <input type="text" placeholder="전화번호" value={form.fabric?.vendorPhone || ''}
@@ -744,8 +1384,8 @@ function ProductForm({ product, types, vendors, materialKinds, onSave, onCancel 
                         onSelect={(v) => handleProcVendorSelect(key, v)}
                         suggestions={procVendors[key]}
                         placeholder="업체명"
-                        getLabel={(v) => v.name}
-                        getKey={(v) => v.id}
+                        getLabel={(v) => v.itemName ? `${v.name} (${v.itemName})` : v.name}
+                        getKey={(v) => v._key || v.id}
                         className="input-field-sm"
                       />
                       <input type="text" placeholder="전화번호" value={form.processing[key].vendorPhone || ''}
@@ -782,8 +1422,8 @@ function ProductForm({ product, types, vendors, materialKinds, onSave, onCancel 
                       onSelect={(v) => handleMaterialVendorSelect(idx, v)}
                       suggestions={materialVendors}
                       placeholder="업체명"
-                      getLabel={(v) => v.name}
-                      getKey={(v) => v.id}
+                      getLabel={(v) => v.itemName ? `${v.name} (${v.itemName})` : v.name}
+                      getKey={(v) => v._key || v.id}
                       className="input-field-sm"
                     />
                     <input type="text" placeholder="전화번호" value={m.vendorPhone || ''}
@@ -836,8 +1476,8 @@ function ProductForm({ product, types, vendors, materialKinds, onSave, onCancel 
                 onSelect={handleSewingVendorSelect}
                 suggestions={sewingVendors}
                 placeholder="업체명"
-                getLabel={(v) => v.name}
-                getKey={(v) => v.id}
+                getLabel={(v) => v.itemName ? `${v.name} (${v.itemName})` : v.name}
+                getKey={(v) => v._key || v.id}
                 className="input-field-sm"
               />
               <input type="text" placeholder="전화번호" value={form.sewing?.vendorPhone || ''}
@@ -890,6 +1530,17 @@ function ProductForm({ product, types, vendors, materialKinds, onSave, onCancel 
                 </div>
               )}
             </div>
+            {/* 신속주문 버튼 */}
+            {isExistingProduct ? (
+              <button onClick={() => setShowQuickOrder(true)}
+                className="w-full mt-3 py-3 bg-gradient-to-r from-gray-900 to-gray-700 text-white rounded-xl font-semibold text-sm hover:opacity-90 transition shadow-sm">
+                ⚡ 신속주문
+              </button>
+            ) : (
+              <div className="w-full mt-3 py-3 bg-gray-100 text-gray-400 rounded-xl text-center text-xs">
+                ⚡ 신속주문 (상품 등록 후 사용 가능)
+              </div>
+            )}
           </div>
 
           {/* 오른쪽 컬럼: 상품 정보 (Sticky) */}
@@ -994,6 +1645,10 @@ function ProductForm({ product, types, vendors, materialKinds, onSave, onCancel 
           {product ? '수정 저장' : '💾 등록하기'}
         </button>
       </div>
+
+      {showQuickOrder && isExistingProduct && (
+        <QuickOrderModal product={form} types={types} onClose={() => setShowQuickOrder(false)} />
+      )}
     </div>
   );
 }
@@ -1005,6 +1660,7 @@ function ProductList({ products, types, onNew, onEdit, onDelete, onOpenTypeManag
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [cardSize, setCardSize] = useState('large');
+  const [hoveredId, setHoveredId] = useState(null);
 
   const filtered = useMemo(() => {
     return products.filter(p => {
@@ -1052,6 +1708,8 @@ function ProductList({ products, types, onNew, onEdit, onDelete, onOpenTypeManag
               className={`px-2 py-1 rounded ${cardSize === 'large' ? 'bg-gray-900 text-white' : 'bg-white border'}`}>크게</button>
             <button onClick={() => setCardSize('small')}
               className={`px-2 py-1 rounded ${cardSize === 'small' ? 'bg-gray-900 text-white' : 'bg-white border'}`}>작게</button>
+            <button onClick={() => setCardSize('grid')}
+              className={`px-2 py-1 rounded ${cardSize === 'grid' ? 'bg-gray-900 text-white' : 'bg-white border'}`}>📱 전체보기</button>
           </div>
         </div>
       </div>
@@ -1061,6 +1719,39 @@ function ProductList({ products, types, onNew, onEdit, onDelete, onOpenTypeManag
           <div className="text-5xl mb-4 opacity-40">📦</div>
           <div className="text-lg font-medium text-gray-700 mb-2">등록된 상품이 없습니다</div>
           <div className="text-sm text-gray-500">"새 상품 등록" 버튼을 눌러 시작하세요</div>
+        </div>
+      ) : cardSize === 'grid' ? (
+        // 📱 전체보기 (앱 아이콘 스타일)
+        <div className="main-card p-6">
+          <div className="flex flex-wrap gap-4">
+            {filtered.map(p => (
+              <div key={p.id}
+                className="relative cursor-pointer group"
+                style={{ width: '120px' }}
+                onClick={() => onEdit(p)}
+                onMouseEnter={() => setHoveredId(p.id)}
+                onMouseLeave={() => setHoveredId(null)}>
+                <div className="bg-gray-50 rounded-2xl aspect-square flex items-center justify-center overflow-hidden transition-all group-hover:shadow-md group-hover:scale-105">
+                  {p.image ? (
+                    <img src={p.image} alt={p.name} className="w-full h-full object-contain" />
+                  ) : (
+                    <div className="opacity-60">
+                      <Silhouette typeId={p.typeId} size={80} />
+                    </div>
+                  )}
+                </div>
+                <div className="text-center mt-2 text-xs font-medium text-gray-800 truncate px-1">{p.name}</div>
+                {/* 호버 시 부가 정보 */}
+                {hoveredId === p.id && (
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-gray-900 text-white rounded-lg px-3 py-2 text-xs whitespace-nowrap z-20 shadow-lg pointer-events-none">
+                    <div className="font-semibold">{p.name}</div>
+                    <div className="text-gray-300">{types[p.typeId]?.label || '?'}{getTypeSummary(p) && ' · ' + getTypeSummary(p)}</div>
+                    <div className="text-gray-300">₩{calculateCost(p).toLocaleString()}</div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       ) : (
         <div className={`grid gap-4 ${cardSize === 'large' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8'}`}>
@@ -1264,88 +1955,138 @@ function TypeManager({ types, onSave, onClose }) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 거래처 자동 취합 로직
+// 거래처 데이터 마이그레이션 (v06 → v07)
+// ═══════════════════════════════════════════════════════════
+function migrateVendors(oldVendors) {
+  return oldVendors.map(v => {
+    // 이미 마이그레이션된 경우
+    if (Array.isArray(v.items)) return v;
+    
+    const items = [];
+    if (v.fabricName) {
+      items.push({
+        id: 'item-' + Math.random().toString(36).slice(2, 9),
+        name: v.fabricName,
+        price: 0,
+        unit: 'yds',
+        source: 'product_linked',
+        linkedProductIds: v.linkedProducts || [],
+      });
+    }
+    if (v.materialKind && !v.fabricName) {
+      items.push({
+        id: 'item-' + Math.random().toString(36).slice(2, 9),
+        name: v.materialKind,
+        price: 0,
+        unit: 'ea',
+        source: 'product_linked',
+        linkedProductIds: v.linkedProducts || [],
+      });
+    }
+    
+    return {
+      ...v,
+      items,
+    };
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// 거래처 자동 취합 로직 (items 구조)
 // ═══════════════════════════════════════════════════════════
 function collectVendorsFromProduct(product, existingVendors) {
-  const newVendors = [];
-  const findOrCreate = (category, name, phone, addr, bizNo, extra = {}) => {
-    if (!name || !name.trim()) return null;
-    const existing = existingVendors.find(v => v.category === category && v.name === name);
-    if (existing) {
-      // 정보 업데이트
-      return {
-        ...existing,
-        phone: phone || existing.phone,
-        addr: addr || existing.addr,
-        bizNo: bizNo || existing.bizNo,
-        ...extra,
-        linkedProducts: [...new Set([...(existing.linkedProducts || []), product.id])],
-      };
-    } else {
-      const v = {
+  const vendors = existingVendors.map(v => ({ 
+    ...v, 
+    items: Array.isArray(v.items) ? [...v.items] : [] 
+  }));
+  const newVendorsList = [];
+
+  const upsertVendor = (category, vendorData, itemData) => {
+    if (!vendorData.name || !vendorData.name.trim()) return;
+    
+    let vendor = vendors.find(v => v.category === category && v.name === vendorData.name);
+    
+    if (!vendor) {
+      vendor = {
         id: 'v-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
-        category, name, phone: phone || '', addr: addr || '', bizNo: bizNo || '',
-        ...extra,
-        linkedProducts: [product.id],
+        category,
+        name: vendorData.name,
+        phone: vendorData.phone || '',
+        addr: vendorData.addr || '',
+        bizNo: vendorData.bizNo || '',
+        items: [],
         createdAt: Date.now(),
       };
-      newVendors.push(v);
-      return v;
+      vendors.push(vendor);
+      newVendorsList.push(vendor);
+    } else {
+      // 정보 업데이트 (빈 값이 아니면)
+      if (vendorData.phone) vendor.phone = vendorData.phone;
+      if (vendorData.addr) vendor.addr = vendorData.addr;
+      if (vendorData.bizNo) vendor.bizNo = vendorData.bizNo;
+    }
+    
+    if (itemData && itemData.name && itemData.name.trim()) {
+      // 기존 item 찾기
+      let item = vendor.items.find(i => i.name === itemData.name);
+      if (!item) {
+        item = {
+          id: 'item-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+          name: itemData.name,
+          price: itemData.price || 0,
+          unit: itemData.unit || 'ea',
+          source: 'product_linked',
+          linkedProductIds: [product.id],
+        };
+        vendor.items.push(item);
+      } else {
+        // 기존 item 업데이트
+        if (itemData.price) item.price = itemData.price;
+        if (itemData.unit) item.unit = itemData.unit;
+        item.source = 'product_linked';
+        item.linkedProductIds = [...new Set([...(item.linkedProductIds || []), product.id])];
+      }
     }
   };
 
-  const updates = [];
-  
   // 원단
   if (product.fabric?.vendorName) {
-    const u = findOrCreate('fabric',
-      product.fabric.vendorName,
-      product.fabric.vendorPhone,
-      product.fabric.vendorAddr,
-      product.fabric.vendorBizNo,
-      { fabricName: product.fabric.name }
+    upsertVendor('fabric',
+      { name: product.fabric.vendorName, phone: product.fabric.vendorPhone, addr: product.fabric.vendorAddr, bizNo: product.fabric.vendorBizNo },
+      { name: product.fabric.name, price: product.fabric.price, unit: product.fabric.unit || 'yds' }
     );
-    if (u) updates.push(u);
   }
 
   // 부자재
   (product.materials || []).forEach(m => {
     if (m.vendorName) {
-      const u = findOrCreate('material',
-        m.vendorName, m.vendorPhone, m.vendorAddr, m.vendorBizNo,
-        { materialKind: m.kind }
+      upsertVendor('material',
+        { name: m.vendorName, phone: m.vendorPhone, addr: m.vendorAddr, bizNo: m.vendorBizNo },
+        { name: m.name, price: m.price, unit: m.unit || 'ea' }
       );
-      if (u) updates.push(u);
     }
   });
 
-  // 봉제
+  // 봉제 (상품명으로 item 저장)
   if (product.sewing?.vendorName) {
-    const u = findOrCreate('sewing',
-      product.sewing.vendorName,
-      product.sewing.vendorPhone,
-      product.sewing.vendorAddr,
-      product.sewing.vendorBizNo);
-    if (u) updates.push(u);
+    upsertVendor('sewing',
+      { name: product.sewing.vendorName, phone: product.sewing.vendorPhone, addr: product.sewing.vendorAddr, bizNo: product.sewing.vendorBizNo },
+      { name: product.name, price: product.sewing.price, unit: '장' }
+    );
   }
 
-  // 가공
+  // 가공 (상품명으로 item 저장)
+  const PROC_UNITS = { dyeing: 'kg', tenter: 'yds', transfer: '판', printing: '판' };
   Object.entries(product.processing || {}).forEach(([key, p]) => {
     if (p.use && p.vendorName) {
-      const u = findOrCreate(key, p.vendorName, p.vendorPhone, p.vendorAddr, p.vendorBizNo);
-      if (u) updates.push(u);
+      upsertVendor(key,
+        { name: p.vendorName, phone: p.vendorPhone, addr: p.vendorAddr, bizNo: p.vendorBizNo },
+        { name: product.name, price: p.price, unit: PROC_UNITS[key] || 'unit' }
+      );
     }
   });
 
-  // 병합
-  const merged = [...existingVendors];
-  updates.forEach(u => {
-    const idx = merged.findIndex(v => v.id === u.id);
-    if (idx >= 0) merged[idx] = u;
-    else merged.push(u);
-  });
-
-  return { vendors: merged, newVendors };
+  return { vendors, newVendors: newVendorsList };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1355,7 +2096,10 @@ function ProductsMaster() {
   const [view, setView] = useState('list');
   const [products, setProducts] = useState(() => storage.get('el_products', []));
   const [types, setTypes] = useState(() => storage.get('el_types', DEFAULT_TYPES));
-  const [vendors, setVendors] = useState(() => storage.get('el_vendors', []));
+  const [vendors, setVendors] = useState(() => {
+    const loaded = storage.get('el_vendors', []);
+    return migrateVendors(loaded);
+  });
   const [materialKinds] = useState(DEFAULT_MATERIAL_KINDS);
   const [editingProduct, setEditingProduct] = useState(null);
   const [toastMessages, setToastMessages] = useState([]);
@@ -1469,46 +2213,95 @@ function ProductsMaster() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 거래처관리 (자동 취합 결과 표시)
+// 거래처관리 (items 지원 + 수동 등록)
 // ═══════════════════════════════════════════════════════════
+const CATEGORY_LABELS = {
+  fabric: '원단', material: '부자재', sewing: '봉제',
+  dyeing: '염색', tenter: '텐타', transfer: '전사', printing: '나염'
+};
+const CATEGORY_ICONS = {
+  fabric: '🧵', material: '🔧', sewing: '🏭',
+  dyeing: '🎨', tenter: '🌡', transfer: '📄', printing: '🖨'
+};
+const DEFAULT_UNITS = {
+  fabric: 'yds', material: 'ea', sewing: '장',
+  dyeing: 'kg', tenter: 'yds', transfer: '판', printing: '판'
+};
+const ITEM_NAME_LABEL = {
+  fabric: '원단명', material: '부자재명', sewing: '상품명',
+  dyeing: '상품명', tenter: '상품명', transfer: '상품명', printing: '상품명'
+};
+
 function VendorsView() {
-  const [vendors, setVendors] = useState(() => storage.get('el_vendors', []));
+  const [vendors, setVendors] = useState(() => {
+    const loaded = storage.get('el_vendors', []);
+    return migrateVendors(loaded);
+  });
+  const [products, setProducts] = useState(() => storage.get('el_products', []));
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [editingVendor, setEditingVendor] = useState(null);
 
   // localStorage 변경 감지
   useEffect(() => {
     const interval = setInterval(() => {
-      const latest = storage.get('el_vendors', []);
-      if (latest.length !== vendors.length || JSON.stringify(latest) !== JSON.stringify(vendors)) {
+      const latest = migrateVendors(storage.get('el_vendors', []));
+      if (JSON.stringify(latest) !== JSON.stringify(vendors)) {
         setVendors(latest);
       }
-    }, 1000);
+      const latestProducts = storage.get('el_products', []);
+      if (latestProducts.length !== products.length) setProducts(latestProducts);
+    }, 1500);
     return () => clearInterval(interval);
-  }, [vendors]);
+  }, [vendors, products]);
 
-  const CATEGORY_LABELS = {
-    fabric: '원단', material: '부자재', sewing: '봉제',
-    dyeing: '염색', tenter: '텐타', transfer: '전사', printing: '나염'
-  };
-  const CATEGORY_ICONS = {
-    fabric: '🧵', material: '🔧', sewing: '🏭',
-    dyeing: '🎨', tenter: '🌡', transfer: '📄', printing: '🖨'
+  const saveVendors = (newVendors) => {
+    setVendors(newVendors);
+    storage.set('el_vendors', newVendors);
   };
 
   const filtered = useMemo(() => {
     return vendors.filter(v => {
       if (filter !== 'all' && v.category !== filter) return false;
-      if (search && !v.name.includes(search)) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        if (!v.name.toLowerCase().includes(q) && 
+            !(v.items || []).some(i => i.name?.toLowerCase().includes(q))) return false;
+      }
       return true;
     });
   }, [vendors, filter, search]);
+
+  const handleDelete = (v) => {
+    const linkedCount = (v.items || []).reduce((s, i) => s + (i.linkedProductIds?.length || 0), 0);
+    const msg = linkedCount > 0
+      ? `⚠️ "${v.name}" 거래처는 상품 ${linkedCount}개에 연결되어 있습니다.\n\n정말 삭제하시겠습니까?\n(상품은 그대로 유지됩니다)`
+      : `"${v.name}" 거래처를 삭제하시겠습니까?`;
+    if (confirm(msg)) {
+      saveVendors(vendors.filter(x => x.id !== v.id));
+    }
+  };
+
+  const handleSaveVendor = (vendor) => {
+    const existing = vendors.find(v => v.id === vendor.id);
+    if (existing) {
+      saveVendors(vendors.map(v => v.id === vendor.id ? vendor : v));
+    } else {
+      saveVendors([...vendors, vendor]);
+    }
+    setShowAddModal(false);
+    setEditingVendor(null);
+  };
 
   return (
     <div className="space-y-6">
       <div className="main-card p-5">
         <div className="flex flex-wrap items-center gap-3">
-          <input type="text" placeholder="🔍 업체명 검색..." value={search}
+          <button className="btn-primary" onClick={() => { setEditingVendor(null); setShowAddModal(true); }}>
+            ➕ 수동 등록
+          </button>
+          <input type="text" placeholder="🔍 업체명/품목 검색..." value={search}
             onChange={e => setSearch(e.target.value)} className="input-field max-w-xs" />
           <div className="flex-1"></div>
           <div className="flex gap-1 flex-wrap">
@@ -1534,33 +2327,261 @@ function VendorsView() {
         <div className="placeholder-box">
           <div className="text-5xl mb-4 opacity-40">🏢</div>
           <div className="text-lg font-medium text-gray-700 mb-2">등록된 거래처가 없습니다</div>
-          <div className="text-sm text-gray-500">상품을 등록하면 거래처가 자동으로 취합됩니다</div>
+          <div className="text-sm text-gray-500">
+            상품 등록 시 자동 취합되거나, <strong>➕ 수동 등록</strong> 버튼으로 추가할 수 있습니다
+          </div>
         </div>
       ) : (
         <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
           {filtered.map(v => (
-            <div key={v.id} className="main-card p-4">
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">{CATEGORY_ICONS[v.category]}</span>
-                    <span className="font-semibold text-gray-900">{v.name}</span>
-                  </div>
-                  <span className="badge mt-1">{CATEGORY_LABELS[v.category]}</span>
-                </div>
-                <span className="text-xs text-gray-400">{v.linkedProducts?.length || 0}개 상품</span>
-              </div>
-              <div className="text-xs text-gray-600 space-y-1 mt-3">
-                {v.fabricName && <div>📦 {v.fabricName}</div>}
-                {v.materialKind && <div>🔧 {v.materialKind}</div>}
-                {v.phone && <div>📞 {v.phone}</div>}
-                {v.addr && <div>📍 {v.addr}</div>}
-                {v.bizNo && <div>🏢 {v.bizNo}</div>}
-              </div>
-            </div>
+            <VendorCard key={v.id} vendor={v} products={products}
+              onEdit={() => { setEditingVendor(v); setShowAddModal(true); }}
+              onDelete={() => handleDelete(v)} />
           ))}
         </div>
       )}
+
+      {showAddModal && (
+        <VendorEditModal vendor={editingVendor} products={products}
+          onSave={handleSaveVendor}
+          onClose={() => { setShowAddModal(false); setEditingVendor(null); }} />
+      )}
+    </div>
+  );
+}
+
+function VendorCard({ vendor, products, onEdit, onDelete }) {
+  return (
+    <div className="main-card p-4 hover:shadow-md transition">
+      <div className="flex items-start justify-between mb-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">{CATEGORY_ICONS[vendor.category]}</span>
+            <span className="font-semibold text-gray-900 truncate">{vendor.name}</span>
+          </div>
+          <span className="badge mt-1">{CATEGORY_LABELS[vendor.category]}</span>
+        </div>
+        <div className="flex gap-1">
+          <button onClick={onEdit} className="text-xs text-gray-400 hover:text-gray-700 px-1">✏️</button>
+          <button onClick={onDelete} className="text-xs text-gray-400 hover:text-red-500 px-1">🗑</button>
+        </div>
+      </div>
+
+      <div className="text-xs text-gray-600 space-y-1 mt-3 border-t border-gray-100 pt-2">
+        {vendor.phone && <div>📞 {vendor.phone}</div>}
+        {vendor.addr && <div>📍 {vendor.addr}</div>}
+        {vendor.bizNo && <div>🏢 {vendor.bizNo}</div>}
+      </div>
+
+      {/* 품목 리스트 */}
+      <div className="mt-3 pt-3 border-t border-gray-100">
+        <div className="text-xs font-semibold text-gray-500 mb-2">
+          품목 {(vendor.items || []).length > 0 && `(${vendor.items.length})`}
+        </div>
+        {(vendor.items || []).length === 0 ? (
+          <div className="text-xs text-gray-400 italic">등록된 품목 없음</div>
+        ) : (
+          <div className="space-y-1">
+            {vendor.items.map(item => (
+              <div key={item.id} className="flex items-center justify-between bg-gray-50 rounded-md px-2 py-1.5">
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-medium text-gray-800 truncate">{item.name || '(이름없음)'}</div>
+                  <div className="text-[10px] text-gray-500">
+                    {item.price > 0 ? `₩${item.price.toLocaleString()}/${item.unit}` : item.unit}
+                  </div>
+                </div>
+                <div className="ml-2">
+                  {item.source === 'product_linked' ? (
+                    <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-100 text-blue-700">
+                      🔗 상품매칭
+                    </span>
+                  ) : (
+                    <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold bg-gray-200 text-gray-700">
+                      ✏️ 수기
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function VendorEditModal({ vendor, products, onSave, onClose }) {
+  const isNew = !vendor;
+  const [form, setForm] = useState(() => vendor ? JSON.parse(JSON.stringify(vendor)) : {
+    id: 'v-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+    category: 'fabric',
+    name: '', phone: '', addr: '', bizNo: '',
+    items: [],
+    createdAt: Date.now(),
+  });
+
+  const addItem = () => {
+    setForm(prev => ({
+      ...prev,
+      items: [...(prev.items || []), {
+        id: 'item-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+        name: '',
+        price: 0,
+        unit: DEFAULT_UNITS[prev.category] || 'ea',
+        source: 'manual',
+      }]
+    }));
+  };
+
+  const updateItem = (idx, field, value) => {
+    setForm(prev => ({
+      ...prev,
+      items: prev.items.map((it, i) => i === idx ? { ...it, [field]: value } : it)
+    }));
+  };
+
+  const removeItem = (idx) => {
+    setForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }));
+  };
+
+  const handleCategoryChange = (cat) => {
+    setForm(prev => ({
+      ...prev,
+      category: cat,
+      items: prev.items.map(it => ({ ...it, unit: it.unit || DEFAULT_UNITS[cat] || 'ea' })),
+    }));
+  };
+
+  const canSave = form.name.trim() && form.category;
+
+  // 봉제/가공 카테고리는 상품명을 드롭다운으로 선택 가능
+  const needsProductSuggestion = ['sewing', 'dyeing', 'tenter', 'transfer', 'printing'].includes(form.category);
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-body" onClick={e => e.stopPropagation()} style={{maxWidth: '600px'}}>
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">{isNew ? '➕ 거래처 수동 등록' : '✏️ 거래처 수정'}</h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+          </div>
+
+          {/* 카테고리 선택 */}
+          <div className="mb-4">
+            <label className="text-xs font-medium text-gray-600 block mb-2">카테고리</label>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
+                <button key={k} onClick={() => handleCategoryChange(k)}
+                  className={`px-3 py-1.5 rounded-lg border text-xs ${form.category === k ? 'bg-gray-900 text-white border-gray-900' : 'bg-white'}`}>
+                  {CATEGORY_ICONS[k]} {v}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 기본 정보 */}
+          <div className="space-y-3 mb-4">
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">업체명 *</label>
+              <input type="text" value={form.name}
+                onChange={e => setForm({...form, name: e.target.value})}
+                className="input-field" placeholder="예: 강길텍스" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">전화번호</label>
+                <input type="text" value={form.phone}
+                  onChange={e => setForm({...form, phone: e.target.value})}
+                  className="input-field" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">사업자번호</label>
+                <input type="text" value={form.bizNo}
+                  onChange={e => setForm({...form, bizNo: e.target.value})}
+                  className="input-field" />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">
+                {form.category === 'fabric' || form.category === 'material' ? '호수 (위치)' : '주소'}
+              </label>
+              <input type="text" value={form.addr}
+                onChange={e => setForm({...form, addr: e.target.value})}
+                className="input-field" placeholder={form.category === 'fabric' ? 'A동 301호' : ''} />
+            </div>
+          </div>
+
+          {/* 품목 리스트 */}
+          <div className="mb-4 border-t pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <div className="text-xs font-semibold text-gray-700">품목 ({(form.items || []).length})</div>
+                <div className="text-[10px] text-gray-500 mt-0.5">
+                  {ITEM_NAME_LABEL[form.category]}별로 단가를 저장할 수 있습니다
+                </div>
+              </div>
+              <button onClick={addItem} className="btn-secondary text-xs">+ 품목 추가</button>
+            </div>
+
+            <div className="space-y-2">
+              {(form.items || []).map((item, idx) => {
+                const isLinked = item.source === 'product_linked';
+                return (
+                  <div key={item.id} className="bg-gray-50 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold ${isLinked ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-700'}`}>
+                        {isLinked ? '🔗 상품매칭' : '✏️ 수기'}
+                      </span>
+                      <button onClick={() => removeItem(idx)} className="text-xs text-red-400">✕ 제거</button>
+                    </div>
+                    <div className="space-y-2">
+                      {/* 봉제/가공은 상품 드롭다운 + 직접 입력 */}
+                      {needsProductSuggestion ? (
+                        <div>
+                          <input type="text" placeholder={`${ITEM_NAME_LABEL[form.category]} (드롭다운 또는 직접 입력)`}
+                            value={item.name}
+                            onChange={e => updateItem(idx, 'name', e.target.value)}
+                            list={`products-list-${idx}`}
+                            className="input-field-sm" />
+                          <datalist id={`products-list-${idx}`}>
+                            {products.map(p => <option key={p.id} value={p.name} />)}
+                          </datalist>
+                        </div>
+                      ) : (
+                        <input type="text" placeholder={ITEM_NAME_LABEL[form.category]}
+                          value={item.name}
+                          onChange={e => updateItem(idx, 'name', e.target.value)}
+                          className="input-field-sm" />
+                      )}
+                      <div className="flex gap-1">
+                        <input type="number" placeholder="단가" value={item.price || ''}
+                          onChange={e => updateItem(idx, 'price', parseFloat(e.target.value) || 0)}
+                          className="input-field-sm flex-1" />
+                        <select value={item.unit}
+                          onChange={e => updateItem(idx, 'unit', e.target.value)}
+                          className="input-field-sm w-24">
+                          <option value="yds">yds</option>
+                          <option value="kg">kg</option>
+                          <option value="ea">ea</option>
+                          <option value="장">장</option>
+                          <option value="판">판</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex gap-2 justify-end">
+            <button onClick={onClose} className="btn-secondary">취소</button>
+            <button onClick={() => onSave(form)} disabled={!canSave} className="btn-primary">
+              💾 저장
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1625,6 +2646,142 @@ function Dashboard() {
 // ═══════════════════════════════════════════════════════════
 // App
 // ═══════════════════════════════════════════════════════════
+function ProductionView() {
+  const [orders, setOrders] = useState(() => storage.get('el_orders', []));
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [selectedOrder, setSelectedOrder] = useState(null);
+
+  // 주기적으로 localStorage 업데이트 반영
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const latest = storage.get('el_orders', []);
+      if (latest.length !== orders.length) setOrders(latest);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [orders]);
+
+  const filtered = useMemo(() => {
+    return orders.filter(o => {
+      if (filter !== 'all' && o.type !== filter) return false;
+      if (search && !o.productName?.includes(search) && !o.orderNo?.includes(search)) return false;
+      return true;
+    }).sort((a, b) => b.createdAt - a.createdAt);
+  }, [orders, search, filter]);
+
+  const handleDelete = (id) => {
+    if (confirm('이 발주 이력을 삭제하시겠습니까?')) {
+      const newOrders = orders.filter(o => o.id !== id);
+      setOrders(newOrders);
+      storage.set('el_orders', newOrders);
+    }
+  };
+
+  const handleClearAll = () => {
+    if (confirm('⚠️ 모든 발주 이력을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.')) {
+      setOrders([]);
+      storage.set('el_orders', []);
+    }
+  };
+
+  const typeLabel = { fabric: '🧵 원단 발주', material: '🔧 부자재 발주' };
+  const methodLabel = { copy: '📋 복사', sms: '📱 문자', email: '📧 메일', share: '💬 공유', pdf: '📄 PDF' };
+
+  return (
+    <div className="space-y-6">
+      <div className="main-card p-5">
+        <div className="text-sm font-semibold text-gray-700 mb-1">📋 발주 내역</div>
+        <div className="text-xs text-gray-500 mb-4">1-1 상품마스터의 [⚡ 신속주문]에서 생성된 발주서 이력입니다</div>
+        <div className="flex flex-wrap items-center gap-3">
+          <input type="text" placeholder="🔍 상품명 또는 발주번호..." value={search}
+            onChange={e => setSearch(e.target.value)} className="input-field max-w-xs" />
+          <div className="flex gap-1 text-xs">
+            <button onClick={() => setFilter('all')}
+              className={`px-3 py-1.5 rounded ${filter === 'all' ? 'bg-gray-900 text-white' : 'bg-white border'}`}>
+              전체 ({orders.length})
+            </button>
+            <button onClick={() => setFilter('fabric')}
+              className={`px-3 py-1.5 rounded ${filter === 'fabric' ? 'bg-gray-900 text-white' : 'bg-white border'}`}>
+              🧵 원단 ({orders.filter(o => o.type === 'fabric').length})
+            </button>
+            <button onClick={() => setFilter('material')}
+              className={`px-3 py-1.5 rounded ${filter === 'material' ? 'bg-gray-900 text-white' : 'bg-white border'}`}>
+              🔧 부자재 ({orders.filter(o => o.type === 'material').length})
+            </button>
+          </div>
+          <div className="flex-1"></div>
+          {orders.length > 0 && (
+            <button onClick={handleClearAll} className="text-xs text-red-500 hover:text-red-700">🗑 전체 삭제</button>
+          )}
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="placeholder-box">
+          <div className="text-5xl mb-4 opacity-40">📋</div>
+          <div className="text-lg font-medium text-gray-700 mb-2">발주 이력이 없습니다</div>
+          <div className="text-sm text-gray-500">1-1 상품마스터에서 상품을 선택하고 ⚡ 신속주문 버튼을 누르면 이력이 쌓입니다</div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map(o => {
+            const d = new Date(o.createdAt);
+            const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+            return (
+              <div key={o.id} className="main-card p-4 hover:shadow-md transition cursor-pointer"
+                onClick={() => setSelectedOrder(o)}>
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="badge">{typeLabel[o.type]}</span>
+                      <span className="text-xs text-gray-400">{o.orderNo}</span>
+                    </div>
+                    <div className="font-semibold text-gray-900 mt-1">{o.productName}</div>
+                  </div>
+                  <button onClick={(e) => { e.stopPropagation(); handleDelete(o.id); }}
+                    className="text-xs text-gray-400 hover:text-red-500">🗑</button>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-gray-500 mt-2">
+                  <div>📅 {dateStr}</div>
+                  <div>📦 {o.totalQty}장</div>
+                  <div>💰 ₩{Math.round(o.totalCost || 0).toLocaleString()}</div>
+                  <div>{methodLabel[o.method] || o.method}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 발주서 상세 팝업 */}
+      {selectedOrder && (
+        <div className="modal-backdrop" onClick={() => setSelectedOrder(null)}>
+          <div className="modal-body" onClick={e => e.stopPropagation()}>
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">{typeLabel[selectedOrder.type]} 상세</h2>
+                <button onClick={() => setSelectedOrder(null)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+              </div>
+              <pre className="bg-gray-50 rounded-lg p-4 text-xs whitespace-pre-wrap">{selectedOrder.text}</pre>
+              <div className="flex gap-2 justify-end mt-4">
+                <button onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(selectedOrder.text);
+                    alert('📋 클립보드에 복사되었습니다!');
+                  } catch {
+                    alert('복사 실패');
+                  }
+                }} className="btn-secondary text-xs">📋 복사</button>
+                <button onClick={() => setSelectedOrder(null)} className="btn-primary">닫기</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function App() {
   const [active, setActive] = useState('dashboard');
   const tabMeta = getTabMeta(active);
@@ -1632,6 +2789,7 @@ function App() {
   const renderContent = () => {
     if (active === 'dashboard') return <Dashboard />;
     if (active === 'products-master') return <ProductsMaster />;
+    if (active === 'production') return <ProductionView />;
     if (active === 'vendors') return <VendorsView />;
     return <Placeholder tabMeta={tabMeta} />;
   };
